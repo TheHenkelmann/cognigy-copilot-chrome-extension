@@ -1,0 +1,8 @@
+node_modules/
+inject/vendor/monaco/
+coverage/
+.DS_Store
+*.log
+.env
+.env.*
+dist/

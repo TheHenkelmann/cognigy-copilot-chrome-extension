@@ -1,0 +1,90 @@
+{
+  "manifest_version": 3,
+  "name": "Cognigy Copilot",
+  "version": "0.1.0",
+  "description": "AI developer copilot for Cognigy: flow chat (Cmd+I), validation, naming standards, and release tooling.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://*.cognigy.cloud/*",
+    "https://*.cognigy.ai/*",
+    "https://live.ai.telekomcloud.com/*",
+    "https://*.live.ai.telekomcloud.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icon-16-bg-transparent.png",
+      "32": "icon-32-bg-transparent.png"
+    }
+  },
+  "icons": {
+    "16": "icon-16-bg-transparent.png",
+    "32": "icon-32-bg-transparent.png",
+    "48": "icon-48-bg-transparent.png",
+    "128": "icon-128-bg-transparent.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.cognigy.cloud/*",
+        "https://*.cognigy.ai/*",
+        "https://live.ai.telekomcloud.com/*",
+        "https://*.live.ai.telekomcloud.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "inject.js",
+        "inject/core/logger.js",
+        "inject/core/message-bridge.js",
+        "inject/core/websocket.js",
+        "inject/monaco/discovery.js",
+        "inject/monaco/edit-stream.js",
+        "inject/flow-code/bootstrap.js",
+        "inject/flow-code/editor.js",
+        "inject/flow-code/tabs.js",
+        "inject/flow-code/view.js",
+        "inject/vendor/monaco/**",
+        "inject/project-map/api-client.js",
+        "inject/project-map/issues.js",
+        "inject/project-map/node-constants.js",
+        "inject/project-map/project-map.js",
+        "inject/project-map/storage.js",
+        "inject/project-map/structured-json.js",
+        "inject/naming/naming-engine.js",
+        "inject/naming/naming-issues.js",
+        "inject/naming/issue-autofix.js",
+        "inject/naming/cache.js",
+        "inject/naming/network-fetch.js",
+        "inject/naming/network-xhr.js",
+        "inject/naming/routes.js",
+        "inject/naming/state.js",
+        "inject/naming/flow-chat-ui.js",
+        "inject/naming/ui.js",
+        "inject/naming/validation.js",
+        "inject/release/release.js",
+        "inject/release/release-api.js",
+        "inject/release/release-ui.js",
+        "icon-16-bg-transparent.png",
+        "icon-32-bg-transparent.png",
+        "icon-48-bg-transparent.png",
+        "icon-128-bg-transparent.png"
+      ],
+      "matches": [
+        "https://*.cognigy.cloud/*",
+        "https://*.cognigy.ai/*",
+        "https://live.ai.telekomcloud.com/*",
+        "https://*.live.ai.telekomcloud.com/*"
+      ]
+    }
+  ]
+}

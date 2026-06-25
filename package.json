@@ -1,0 +1,54 @@
+{
+  "type": "module",
+  "name": "cognigy-copilot-chrome-extension",
+  "version": "0.1.0",
+  "description": "AI developer copilot Chrome extension for Cognigy: flow chat, validation, naming standards, and release tooling.",
+  "license": "MIT",
+  "author": "Anton E. Henkelmann",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TheHenkelmann/cognigy-copilot-chrome-extension.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TheHenkelmann/cognigy-copilot-chrome-extension/issues"
+  },
+  "homepage": "https://github.com/TheHenkelmann/cognigy-copilot-chrome-extension#readme",
+  "keywords": [
+    "chrome-extension",
+    "cognigy",
+    "copilot",
+    "llm",
+    "gemini",
+    "developer-tools"
+  ],
+  "scripts": {
+    "copy:monaco": "node scripts/copy-monaco-assets.js",
+    "build:inject": "npm run copy:monaco",
+    "build": "npm run build:inject",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --project tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.55.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "@types/chrome": "^0.0.323",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.28.0",
+    "globals": "^16.2.0",
+    "jsdom": "^26.1.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

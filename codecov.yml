@@ -1,0 +1,46 @@
+comment:
+  layout: "reach,diff,flags,components,files"
+  behavior: default
+  require_changes: false
+
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        threshold: 0%
+  individual_components:
+    - component_id: lib
+      name: lib
+      paths:
+        - lib/**
+      statuses:
+        - type: project
+          target: 90%
+          threshold: 2%
+        - type: patch
+          target: 85%
+          threshold: 5%
+    - component_id: inject_core
+      name: inject-core
+      paths:
+        - inject/naming/naming-engine.js
+        - inject/project-map/structured-json.js
+      statuses:
+        - type: project
+          target: auto
+          informational: true
+        - type: patch
+          target: auto
+          informational: true
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        informational: true
+    patch:
+      default:
+        target: auto
+        informational: true
