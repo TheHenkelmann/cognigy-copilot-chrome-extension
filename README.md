@@ -66,78 +66,78 @@ Non-Cognigy extension nodes (extension package not starting with `@cognigy/`) al
 
 ### Rule types
 
-| Rule | Meaning |
-| ---- | ------- |
+| Rule       | Meaning                                                                             |
+| ---------- | ----------------------------------------------------------------------------------- |
 | **prefix** | `PREFIX_Description` — strips Cognigy default names and legacy `:` / `.` delimiters |
-| **static** | Fixed label regardless of config |
-| **custom** | Computed from node config (see Result column) |
+| **static** | Fixed label regardless of config                                                    |
+| **custom** | Computed from node config (see Result column)                                       |
 
 ### Node type mapping
 
-| Node type | Rule | Prefix / static value | Result |
-| --------- | ---- | --------------------- | ------ |
-| `activateProfile` | prefix | `aPP` | `aPP_Description` |
-| `addToContext` | prefix | `aCC` | `aCC_Description` |
-| `afterwards` | prefix | `after` | `after_Description` |
-| `aiAgentHandover` | custom | tool handler | `T_{toolId}` |
-| `aiAgentJob` | prefix | `Agent` | `Agent_Description` |
-| `aiAgentJobDefault` | static | — | `T_default` |
-| `aiAgentJobTool` | custom | tool handler | `T_{toolId}` |
-| `aiAgentToolAnswer` | prefix | `RTA` | `RTA_Description` |
-| `case` | custom | case handler | `C_{caseValue}` |
-| `checkAgentAvailability` | static | — | `checkAgentAvailability` |
-| `code` | prefix | `Code` | `Code_Description` (except label `Emit`) |
-| `completeGoal` | custom | goal handler | `CG_{goal}` |
-| `datePicker` | prefix | `Date` | `Date_Description` |
-| `deactivateProfile` | prefix | `dPP` | `dPP_Description` |
-| `debugMessage` | prefix | `🐞` | `🐞_Description` |
-| `default` | static | — | `C_default` |
-| `deleteProfile` | prefix | `rmPP` | `rmPP_Description` |
-| `detectLanguage` | prefix | `Lang` | `Lang_Description` |
-| `else` | custom | then/else handler | `Else` (analytics derived from parent If) |
-| `emailNotification` | prefix | `MAIL` | `MAIL_Description` |
-| `end` | custom | start/end handler | `End_{flowName}` |
-| `executeFlow` | custom | goto/execute handler | `EX_[FlowName]` or `EX_[SELF]`, optional target node label |
-| `extensions` | prefix | `EXT` | `EXT_Description` |
-| `extension` | prefix | `EXT` | `EXT_Description` (any non-`@cognigy/` extension node) |
-| `getTranscript` | prefix | `getT` | `getT_Description` |
-| `goTo` | custom | goto/execute handler | `GT_` / `GTW_[FlowName]` or `[SELF]`, optional target node label |
-| `handoverToAgent` | prefix | `HO` | `HO_Description` |
-| `httpRequest` | prefix | `HTTP` | `HTTP_Description` |
-| `if` | custom | if handler | `If` or `If_{condition}` |
-| `json` | prefix | `JSON` | `JSON_Description` |
-| `llmEntityExtract` | prefix | `LLMEE` | `LLMEE_Description` |
-| `llmPromptDefault` | static | — | `T_default` |
-| `llmPromptTool` | custom | tool handler | `T_{toolId}` |
-| `llmPromptV2` | prefix | `LLM` | `LLM_Description` |
-| `log` | prefix | `🪵` | `🪵_Description` |
-| `mergeProfile` | prefix | `mPP` | `mPP_Description` |
-| `onAnswer` | static | — | `On Answer` |
-| `onFirstExecution` | prefix | `oFT` | `oFT_Description` |
-| `onQuestion` | static | — | `On Question` |
-| `once` | prefix | `Once` | `Once_Description` |
-| `optionalQuestion` | prefix | `OQ` | `OQ_Description` |
-| `overwriteAnalytics` | prefix | `A` | `A_Description` |
-| `placeholder` | static | — | `TODO` |
-| `question` | prefix | `Q` | `Q_Description` |
-| `removeFromContext` | prefix | `rmCC` | `rmCC_Description` |
-| `requestRating` | prefix | `Rate` | `Rate_Description` |
-| `resetContext` | prefix | `rsCC` | `rsCC_Description` |
-| `say` | prefix | `S` | `S_Description` |
-| `searchExtractOutput` | prefix | `SEO` | `SEO_Description` |
-| `sendEmail` | prefix | `MAIL` | `MAIL_Description` |
-| `setRating` | prefix | `Rate` | `Rate_Description` |
-| `sleep` | custom | sleep handler | `sleep_{milliseconds}ms` |
-| `sqlRunQuery` | prefix | `SQL` | `SQL_Description` |
-| `start` | custom | start/end handler | `Start_{flowName}` |
-| `stop` | static | — | `Stop and Return` |
-| `switch` | prefix | `Lookup` | `Lookup_Description` |
-| `then` | custom | then/else handler | `Then` (analytics derived from parent If) |
-| `think` | prefix | `Think` | `Think_Description` |
-| `trackGoal` | prefix | `TG` | `TG_Description` |
-| `triggerFunction` | prefix | `Fn` | `Fn_Description` |
-| `updateProfile` | prefix | `uPP` | `uPP_Description` |
-| `wait` | static | — | `Wait for Input` |
+| Node type                | Rule   | Prefix / static value | Result                                                           |
+| ------------------------ | ------ | --------------------- | ---------------------------------------------------------------- |
+| `activateProfile`        | prefix | `aPP`                 | `aPP_Description`                                                |
+| `addToContext`           | prefix | `aCC`                 | `aCC_Description`                                                |
+| `afterwards`             | prefix | `after`               | `after_Description`                                              |
+| `aiAgentHandover`        | custom | tool handler          | `T_{toolId}`                                                     |
+| `aiAgentJob`             | prefix | `Agent`               | `Agent_Description`                                              |
+| `aiAgentJobDefault`      | static | —                     | `T_default`                                                      |
+| `aiAgentJobTool`         | custom | tool handler          | `T_{toolId}`                                                     |
+| `aiAgentToolAnswer`      | prefix | `RTA`                 | `RTA_Description`                                                |
+| `case`                   | custom | case handler          | `C_{caseValue}`                                                  |
+| `checkAgentAvailability` | static | —                     | `checkAgentAvailability`                                         |
+| `code`                   | prefix | `Code`                | `Code_Description` (except label `Emit`)                         |
+| `completeGoal`           | custom | goal handler          | `CG_{goal}`                                                      |
+| `datePicker`             | prefix | `Date`                | `Date_Description`                                               |
+| `deactivateProfile`      | prefix | `dPP`                 | `dPP_Description`                                                |
+| `debugMessage`           | prefix | `🐞`                  | `🐞_Description`                                                 |
+| `default`                | static | —                     | `C_default`                                                      |
+| `deleteProfile`          | prefix | `rmPP`                | `rmPP_Description`                                               |
+| `detectLanguage`         | prefix | `Lang`                | `Lang_Description`                                               |
+| `else`                   | custom | then/else handler     | `Else` (analytics derived from parent If)                        |
+| `emailNotification`      | prefix | `MAIL`                | `MAIL_Description`                                               |
+| `end`                    | custom | start/end handler     | `End_{flowName}`                                                 |
+| `executeFlow`            | custom | goto/execute handler  | `EX_[FlowName]` or `EX_[SELF]`, optional target node label       |
+| `extensions`             | prefix | `EXT`                 | `EXT_Description`                                                |
+| `extension`              | prefix | `EXT`                 | `EXT_Description` (any non-`@cognigy/` extension node)           |
+| `getTranscript`          | prefix | `getT`                | `getT_Description`                                               |
+| `goTo`                   | custom | goto/execute handler  | `GT_` / `GTW_[FlowName]` or `[SELF]`, optional target node label |
+| `handoverToAgent`        | prefix | `HO`                  | `HO_Description`                                                 |
+| `httpRequest`            | prefix | `HTTP`                | `HTTP_Description`                                               |
+| `if`                     | custom | if handler            | `If` or `If_{condition}`                                         |
+| `json`                   | prefix | `JSON`                | `JSON_Description`                                               |
+| `llmEntityExtract`       | prefix | `LLMEE`               | `LLMEE_Description`                                              |
+| `llmPromptDefault`       | static | —                     | `T_default`                                                      |
+| `llmPromptTool`          | custom | tool handler          | `T_{toolId}`                                                     |
+| `llmPromptV2`            | prefix | `LLM`                 | `LLM_Description`                                                |
+| `log`                    | prefix | `🪵`                  | `🪵_Description`                                                 |
+| `mergeProfile`           | prefix | `mPP`                 | `mPP_Description`                                                |
+| `onAnswer`               | static | —                     | `On Answer`                                                      |
+| `onFirstExecution`       | prefix | `oFT`                 | `oFT_Description`                                                |
+| `onQuestion`             | static | —                     | `On Question`                                                    |
+| `once`                   | prefix | `Once`                | `Once_Description`                                               |
+| `optionalQuestion`       | prefix | `OQ`                  | `OQ_Description`                                                 |
+| `overwriteAnalytics`     | prefix | `A`                   | `A_Description`                                                  |
+| `placeholder`            | static | —                     | `TODO`                                                           |
+| `question`               | prefix | `Q`                   | `Q_Description`                                                  |
+| `removeFromContext`      | prefix | `rmCC`                | `rmCC_Description`                                               |
+| `requestRating`          | prefix | `Rate`                | `Rate_Description`                                               |
+| `resetContext`           | prefix | `rsCC`                | `rsCC_Description`                                               |
+| `say`                    | prefix | `S`                   | `S_Description`                                                  |
+| `searchExtractOutput`    | prefix | `SEO`                 | `SEO_Description`                                                |
+| `sendEmail`              | prefix | `MAIL`                | `MAIL_Description`                                               |
+| `setRating`              | prefix | `Rate`                | `Rate_Description`                                               |
+| `sleep`                  | custom | sleep handler         | `sleep_{milliseconds}ms`                                         |
+| `sqlRunQuery`            | prefix | `SQL`                 | `SQL_Description`                                                |
+| `start`                  | custom | start/end handler     | `Start_{flowName}`                                               |
+| `stop`                   | static | —                     | `Stop and Return`                                                |
+| `switch`                 | prefix | `Lookup`              | `Lookup_Description`                                             |
+| `then`                   | custom | then/else handler     | `Then` (analytics derived from parent If)                        |
+| `think`                  | prefix | `Think`               | `Think_Description`                                              |
+| `trackGoal`              | prefix | `TG`                  | `TG_Description`                                                 |
+| `triggerFunction`        | prefix | `Fn`                  | `Fn_Description`                                                 |
+| `updateProfile`          | prefix | `uPP`                 | `uPP_Description`                                                |
+| `wait`                   | static | —                     | `Wait for Input`                                                 |
 
 Source of truth: `NAMING_RULES` in `inject/naming/naming-engine.js`.
 
@@ -151,7 +151,6 @@ Naming convention violations (`naming_convention_violation`, **Info**) are scann
 
 ### Flow structure & configuration
 
-
 | Pattern                        | Severity | Description                                                                        |
 | ------------------------------ | -------- | ---------------------------------------------------------------------------------- |
 | `dead_path`                    | Warning  | Nodes unreachable at runtime after a terminator (GoTo, Stop, AI Agent Tool Answer) |
@@ -161,9 +160,7 @@ Naming convention violations (`naming_convention_violation`, **Info**) are scann
 | `code_node_empty`              | Warning  | Active code node has no code content                                               |
 | `switch_duplicate_case_value`  | Warning  | Switch has duplicate case values                                                   |
 
-
 ### Context & HTTP
-
 
 | Pattern                                    | Severity | Description                                  |
 | ------------------------------------------ | -------- | -------------------------------------------- |
@@ -175,9 +172,7 @@ Naming convention violations (`naming_convention_violation`, **Info**) are scann
 | `http_request_missing_auth_connection`     | Error    | HTTP Request uses auth but has no connection |
 | `trigger_function_invalid_parameters_json` | Error    | Trigger Function has invalid parameters JSON |
 
-
 ### GoTo & Execute Flow
-
 
 | Pattern                         | Severity | Description                                   |
 | ------------------------------- | -------- | --------------------------------------------- |
@@ -189,11 +184,9 @@ Naming convention violations (`naming_convention_violation`, **Info**) are scann
 | `*_self_reference`              | Error    | Node references itself                        |
 | `*_target_disabled`             | Error    | Target node is disabled                       |
 
-
 `*` = `goto` or `execute_flow`
 
 ### LLM
-
 
 | Pattern                            | Severity | Description                                               |
 | ---------------------------------- | -------- | --------------------------------------------------------- |
@@ -212,9 +205,7 @@ Naming convention violations (`naming_convention_violation`, **Info**) are scann
 | `llm_connection_not_found`         | Error    | LLM connection does not exist                             |
 | `llm_connection_deprecated`        | Error    | LLM connection is deprecated                              |
 
-
 ### Extensions & connections
-
 
 | Pattern                                   | Severity | Description                                   |
 | ----------------------------------------- | -------- | --------------------------------------------- |
@@ -230,23 +221,18 @@ Naming convention violations (`naming_convention_violation`, **Info**) are scann
 | `extension_connection_deprecated`         | Error    | Referenced connection deprecated              |
 | `extension_connection_type_mismatch`      | Error    | Connection type does not match extension      |
 
-
 ### AI Agent
-
 
 | Pattern                                 | Severity | Description                           |
 | --------------------------------------- | -------- | ------------------------------------- |
 | `ai_agent_tool_answer_missing_or_empty` | Error    | AI Agent Tool Answer missing or empty |
 
-
 ### Chart validation (integrity panel)
-
 
 | Pattern       | Severity | Description                                                                            |
 | ------------- | -------- | -------------------------------------------------------------------------------------- |
 | `gotoExecute` | Error    | GoTo or Execute Flow references a missing target flow or node (cross-flow chart check) |
 | `deadPath`    | Warning  | Dead path nodes after terminating nodes in the current flow (chart check)              |
-
 
 ## Architecture
 
@@ -259,9 +245,6 @@ flowchart LR
   MOD --> PM["project-map IndexedDB cache"]
 ```
 
-
-
-
 | Layer                  | Role                                                           |
 | ---------------------- | -------------------------------------------------------------- |
 | `content.js`           | Injects page scripts, bridges `postMessage` ↔ `chrome.runtime` |
@@ -271,7 +254,6 @@ flowchart LR
 | `inject/release/*`     | Release/snapshot UI and Cognigy REST API client                |
 | `inject/flow-code/*`   | Code tab, JSON rendering from project map                      |
 | `background.js`        | Extension service worker (message routing)                     |
-
 
 ## Supported deployments
 
@@ -307,13 +289,11 @@ npm run build         # Monaco vendor copy
 
 Coverage is split intentionally:
 
-
 | Scope                                                                     | Role                                            | Gate                                |
 | ------------------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------- |
 | `lib/**`                                                                  | Extracted, unit-testable core (logger, helpers) | **90 %+** (Codecov component `lib`) |
 | `inject/naming/naming-engine.js`, `inject/project-map/structured-json.js` | Pure-logic inject modules                       | Informational only (`inject-core`)  |
 | Remaining `inject/**`                                                     | UI / Chrome integration                         | Not in coverage scope               |
-
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
@@ -326,13 +306,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## Permissions
 
-
 | Permission                            | Why                                                     |
 | ------------------------------------- | ------------------------------------------------------- |
 | `storage`                             | Persist settings, cached project data, releases locally |
 | `*.cognigy.cloud/*`, `*.cognigy.ai/*` | Inject copilot into Cognigy UI                          |
 | `live.ai.telekomcloud.com/*`          | Telekom Cloud Cognigy deployments                       |
-
 
 ## Related projects
 
