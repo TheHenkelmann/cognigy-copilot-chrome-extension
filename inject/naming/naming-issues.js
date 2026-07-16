@@ -66,6 +66,10 @@
           summary.type === "executeFlow" ||
           summary.type === "then" ||
           summary.type === "else" ||
+          summary.type === "onFirstExecution" ||
+          summary.type === "afterwards" ||
+          summary.type === "onQuestion" ||
+          summary.type === "onAnswer" ||
           !engine.analyticsLabelOf(summary);
 
         if (needsDetails && getNodeDetails) {
@@ -77,7 +81,9 @@
           } catch (_) {}
         }
 
-        const evaluation = await engine.evaluateNodeNaming(node, flowId, flow, {});
+        const evaluation = await engine.evaluateNodeNaming(node, flowId, flow, {
+          flowNodes: nodes,
+        });
         if (!evaluation) continue;
         issues.push(makeNamingIssue(evaluation));
       }
@@ -87,8 +93,17 @@
       const aType = a.node && a.node.type ? String(a.node.type) : "";
       const bType = b.node && b.node.type ? String(b.node.type) : "";
       function typeRank(type) {
-        if (type === "if") return 0;
-        if (type === "then" || type === "else") return 2;
+        if (type === "if" || type === "once" || type === "optionalQuestion") return 0;
+        if (
+          type === "then" ||
+          type === "else" ||
+          type === "onFirstExecution" ||
+          type === "afterwards" ||
+          type === "onQuestion" ||
+          type === "onAnswer"
+        ) {
+          return 2;
+        }
         return 1;
       }
       const ar = typeRank(aType);

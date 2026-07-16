@@ -258,7 +258,13 @@
     const items = {};
     items[STORAGE_INDEX_KEY] = index;
     items[STORAGE_SESSION_PREFIX + sessionId] = snapshot;
-    await storageSet(items);
+    const setRes = await storageSet(items);
+    if (!setRes || !setRes.ok) {
+      const CCP = window.__CCP__ || {};
+      if (CCP.snackbar) {
+        CCP.snackbar.error("Speichern fehlgeschlagen", (setRes && setRes.error) || "Zeitüberschreitung");
+      }
+    }
   }
 
   function updateChatChromeVisibility() {

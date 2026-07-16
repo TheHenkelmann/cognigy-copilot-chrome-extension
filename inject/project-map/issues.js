@@ -1353,11 +1353,67 @@
   // Per-node goTo / executeFlow / aiAgentToolAnswer checks
   // ---------------------------------------------------------------------
 
-  function gotoExecuteIssuesForNode(flow, node, byFlowRef) {
+  function isChartEntryIndexed(chart) {
+    if (!chart || typeof chart !== "object") return false;
+    if (chart.nodesByRefId && chart.nodesByRefId.size > 0) return true;
+    if (chart.nodesById && chart.nodesById.size > 0) return true;
+    return false;
+  }
+
+  function resolveGotoTargetNode(targetFlow, nodeRef, opts) {
+    const options = opts || {};
+    const tNodes = (targetFlow && targetFlow.nodes) || [];
+    const byNodeRef = nodesByReferenceId(tNodes);
+    let targetNode = byNodeRef.get(nodeRef);
+    if (targetNode) {
+      return { targetNode: targetNode, indexReady: true };
+    }
+
+    const targetFlowId = idOf(targetFlow);
+    const getChart = typeof options.getChartCacheEntry === "function" ? options.getChartCacheEntry : null;
+    if (getChart && targetFlowId) {
+      const chart = getChart(targetFlowId);
+      if (chart && chart.nodesByRefId) {
+        targetNode = chart.nodesByRefId.get(nodeRef) || null;
+        if (targetNode) {
+          return { targetNode: targetNode, indexReady: true };
+        }
+        if (isChartEntryIndexed(chart)) {
+          return { targetNode: null, indexReady: true };
+        }
+      }
+    }
+
+    const chartEntries = options.chartEntriesByFlowId;
+    if (chartEntries && targetFlowId && typeof chartEntries.get === "function") {
+      const entry = chartEntries.get(String(targetFlowId));
+      if (entry && entry.nodesByRefId) {
+        targetNode = entry.nodesByRefId.get(nodeRef) || null;
+        if (targetNode) {
+          return { targetNode: targetNode, indexReady: true };
+        }
+        if (isChartEntryIndexed(entry)) {
+          return { targetNode: null, indexReady: true };
+        }
+      }
+    }
+
+    const isReady =
+      typeof options.isFlowNodesIndexReady === "function"
+        ? options.isFlowNodesIndexReady(targetFlow)
+        : tNodes.length > 0;
+    return { targetNode: null, indexReady: isReady };
+  }
+
+  function gotoExecuteIssuesForNode(flow, node, byFlowRef, scanOpts) {
     const ntype = typeOf(node);
     if (ntype !== "goTo" && ntype !== "executeFlow") return [];
     const prefix = ntype === "goTo" ? "goto" : "execute_flow";
     const issues = [];
+    const opts = scanOpts || {};
+    if (!node || node.config === undefined) {
+      return issues;
+    }
     const cfg = configOf(node);
     const fn = configFlowNode(cfg);
     if (fn === null) {
@@ -1386,6 +1442,9 @@
     }
     const targetFlow = byFlowRef.get(flowRef);
     if (!targetFlow) {
+      if (opts.projectIndexReady === false) {
+        return issues;
+      }
       issues.push(
         makeIssue(prefix + "_target_flow_not_found", {
           severity: 3,
@@ -1407,10 +1466,12 @@
       );
       return issues;
     }
-    const tNodes = (targetFlow && targetFlow.nodes) || [];
-    const byNodeRef = nodesByReferenceId(tNodes);
-    const targetNode = byNodeRef.get(nodeRef);
+    const resolved = resolveGotoTargetNode(targetFlow, nodeRef, opts);
+    const targetNode = resolved.targetNode;
     if (!targetNode) {
+      if (!resolved.indexReady) {
+        return issues;
+      }
       issues.push(
         makeIssue(prefix + "_target_node_not_found", {
           severity: 3,
@@ -1485,6 +1546,13 @@
     const connections = args.connections || [];
     const connectionsByRef = args.connectionsByRef || new Map();
     const extensionSpecs = args.extensionSpecs || new Map();
+    const scanOpts = {
+      chartEntriesByFlowId: args.chartEntriesByFlowId || null,
+      getChartCacheEntry: typeof args.getChartCacheEntry === "function" ? args.getChartCacheEntry : null,
+      isFlowNodesIndexReady:
+        typeof args.isFlowNodesIndexReady === "function" ? args.isFlowNodesIndexReady : null,
+      projectIndexReady: args.projectIndexReady !== false,
+    };
     const byFlowRef = flowsByReferenceId(flows);
     const issues = [];
 
@@ -1498,7 +1566,7 @@
         const ntype = typeOf(node);
 
         if (ntype === "goTo" || ntype === "executeFlow") {
-          const subIssues = gotoExecuteIssuesForNode(flow, node, byFlowRef);
+          const subIssues = gotoExecuteIssuesForNode(flow, node, byFlowRef, scanOpts);
           for (let k = 0; k < subIssues.length; k++) issues.push(subIssues[k]);
         }
         const aiIssues = aiAgentToolAnswerIssues(flow, node);
@@ -1600,6 +1668,7 @@
     llmConnectionIssues,
     extensionConnectionIssues,
     gotoExecuteIssuesForNode,
+    resolveGotoTargetNode,
     aiAgentToolAnswerIssues,
     // entry point
     scanProject,

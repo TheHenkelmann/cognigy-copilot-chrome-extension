@@ -231,6 +231,32 @@
 
   let namingEngineInstance = null;
 
+  function getFlowNodesFromProjectMap(flowId) {
+    const map = namingState.map;
+    if (!map || typeof map.getFlow !== "function") return [];
+    const flow = map.getFlow(String(flowId));
+    if (!flow || !Array.isArray(flow.nodes)) return [];
+    return flow.nodes;
+  }
+
+  function getChartForNamingEngine(flowId) {
+    const key = String(flowId);
+    const cached = namingState.chartCache.get(key);
+    if (cached && cached.nodesById && cached.nodesById.size > 0) {
+      return cached;
+    }
+    try {
+      const map = namingState.map;
+      if (map && typeof map.getChartEntry === "function") {
+        const entry = map.getChartEntry(key);
+        if (entry && entry.nodesById && entry.nodesById.size > 0) {
+          return entry;
+        }
+      }
+    } catch (_) {}
+    return cached || null;
+  }
+
   function ensureNamingEngine() {
     if (namingEngineInstance) return namingEngineInstance;
     const namingMod = CCP.naming;
@@ -238,9 +264,8 @@
     namingEngineInstance = namingMod.createEngine({
       getFlowById: getFlowById,
       getFlowByRefId: getFlowByRefId,
-      getChart: function (flowId) {
-        return namingState.chartCache.get(String(flowId));
-      },
+      getChart: getChartForNamingEngine,
+      getFlowNodes: getFlowNodesFromProjectMap,
       getNodeDetails: getNodeDetails,
       resolveNodeSummaryByRefId: resolveNodeSummaryByRefId,
       log: namingLogDebug,
@@ -3949,6 +3974,8 @@
       .catch(function (e) {
         console.warn(NAMING_LOG_PREFIX, "integrity clipboard copy failed", e);
         if (actionButton) actionButton.title = "Kopieren fehlgeschlagen";
+        const CCP = window.__CCP__ || {};
+        if (CCP.snackbar) CCP.snackbar.error("Kopieren fehlgeschlagen", e.message);
       });
   }
 
@@ -4243,7 +4270,13 @@
       void autofix
         .fixSingleIssue(error, getAutofixContext())
         .then(function (result) {
-          if (!result || !result.ok) return;
+          if (!result || !result.ok) {
+            const CCP = window.__CCP__ || {};
+            if (CCP.snackbar) {
+              CCP.snackbar.error("Autofix fehlgeschlagen", (result && result.error) || "Unbekannter Fehler");
+            }
+            return;
+          }
           // applyNamingConventionFix → refreshUiAfterNamingAutofix handles UI.
         })
         .finally(function () {
@@ -4347,6 +4380,12 @@
               "/" +
               String(result.total || 0) +
               (result.failure ? " ✗" + result.failure : "");
+            if (result.failure) {
+              const CCP = window.__CCP__ || {};
+              if (CCP.snackbar) {
+                CCP.snackbar.warning("Autofix abgeschlossen", String(result.failure) + " Fehler verbleiben");
+              }
+            }
           })
           .finally(function () {
             setTimeout(function () {
@@ -4987,6 +5026,90 @@
     namingState.validation.dirtyDetailFlowRefreshById.set(key, Boolean(current) || Boolean(forceRefresh));
   }
 
+  function markGotoTargetFlowChartsDirty() {
+    const dirty = namingState.validation.dirtyChartLoadFlowIds;
+    const markTarget = function (targetFlowRef) {
+      if (!targetFlowRef) return;
+      const targetFlow = namingState.flowsCache.byRefId.get(String(targetFlowRef));
+      if (!targetFlow) return;
+      const targetFlowId = String(targetFlow._id || targetFlow.id || "");
+      if (!targetFlowId) return;
+      if (!namingState.chartCache.has(targetFlowId)) {
+        markFlowDirtyForChartLoad(targetFlowId);
+      }
+    };
+
+    for (const chart of namingState.chartCache.values()) {
+      if (!chart || !chart.nodesById) continue;
+      for (const node of chart.nodesById.values()) {
+        if (!node || (node.type !== "goTo" && node.type !== "executeFlow")) continue;
+        const flowNode = node.config && node.config.flowNode ? node.config.flowNode : null;
+        if (!flowNode) continue;
+        markTarget(flowNode.flow ? String(flowNode.flow) : "");
+      }
+    }
+
+    const map = namingState.map;
+    if (map && Array.isArray(map.flows)) {
+      for (let fi = 0; fi < map.flows.length; fi++) {
+        const flow = map.flows[fi];
+        const nodes = flow && Array.isArray(flow.nodes) ? flow.nodes : [];
+        for (let ni = 0; ni < nodes.length; ni++) {
+          const node = nodes[ni];
+          if (!node || (node.type !== "goTo" && node.type !== "executeFlow")) continue;
+          if (node.config === undefined) continue;
+          const flowNode = node.config && node.config.flowNode ? node.config.flowNode : null;
+          if (!flowNode) continue;
+          markTarget(flowNode.flow ? String(flowNode.flow) : "");
+        }
+      }
+    }
+
+    namingLogDebug("goto target flow charts marked dirty", { count: dirty.size });
+  }
+
+  async function ensureGotoTargetFlowsLoadedInMap() {
+    const map = namingState.map;
+    if (!map || typeof map.getFlow !== "function" || typeof map.reloadFlow !== "function") {
+      return;
+    }
+    const targetFlowIds = new Set();
+    const flows = Array.isArray(map.flows) ? map.flows : [];
+    for (let fi = 0; fi < flows.length; fi++) {
+      const flow = flows[fi];
+      const nodes = flow && Array.isArray(flow.nodes) ? flow.nodes : [];
+      for (let ni = 0; ni < nodes.length; ni++) {
+        const node = nodes[ni];
+        if (!node || (node.type !== "goTo" && node.type !== "executeFlow")) continue;
+        if (node.config === undefined) continue;
+        const flowNode = node.config && node.config.flowNode ? node.config.flowNode : null;
+        if (!flowNode || !flowNode.flow) continue;
+        const targetFlow = namingState.flowsCache.byRefId.get(String(flowNode.flow));
+        if (!targetFlow) continue;
+        const targetFlowId = String(targetFlow._id || targetFlow.id || "");
+        if (!targetFlowId) continue;
+        const targetFlowRecord = map.getFlow(targetFlowId);
+        const targetNodes =
+          targetFlowRecord && Array.isArray(targetFlowRecord.nodes) ? targetFlowRecord.nodes : [];
+        if (!targetNodes.length) {
+          targetFlowIds.add(targetFlowId);
+        }
+      }
+    }
+    if (!targetFlowIds.size) return;
+    namingLogDebug("loading goto target flows with empty node index", {
+      count: targetFlowIds.size,
+    });
+    const ids = Array.from(targetFlowIds.values());
+    await Promise.all(
+      ids.map(async function (flowId) {
+        try {
+          await map.reloadFlow(flowId, { force: true });
+        } catch (_) {}
+      })
+    );
+  }
+
   async function hydrateGotoExecuteNodeDetailsForFlow(flowId, forceRefresh) {
     const chart = namingState.chartCache.get(String(flowId));
     if (!chart || !chart.nodesById || chart.nodesById.size === 0) return;
@@ -5315,12 +5438,15 @@
       if (!chart || !chart.nodesById) continue;
       for (const node of chart.nodesById.values()) {
         if (!node || (node.type !== "goTo" && node.type !== "executeFlow")) continue;
+        if (node.config === undefined) continue;
         const flowNode = node.config && node.config.flowNode ? node.config.flowNode : {};
         const targetFlowRef = flowNode.flow ? String(flowNode.flow) : "";
         const targetNodeRef = flowNode.node ? String(flowNode.node) : "";
+        if (!targetFlowRef && !targetNodeRef) continue;
         const targetFlow = targetFlowRef ? namingState.flowsCache.byRefId.get(targetFlowRef) : null;
 
         if (!targetFlow) {
+          if (!targetFlowRef) continue;
           const flowMeta = namingState.flowsCache.byId.get(String(flowId));
           errors.push({
             type: "gotoExecute",
@@ -5341,7 +5467,10 @@
 
         const targetFlowId = String(targetFlow._id || targetFlow.id || "");
         const targetChart = namingState.chartCache.get(targetFlowId);
-        const targetNode = targetChart && targetNodeRef ? targetChart.nodesByRefId.get(targetNodeRef) : null;
+        if (!targetChart || !targetChart.nodesByRefId || targetChart.nodesByRefId.size === 0) {
+          continue;
+        }
+        const targetNode = targetNodeRef ? targetChart.nodesByRefId.get(targetNodeRef) : null;
         if (!targetNode) {
           const flowMeta = namingState.flowsCache.byId.get(String(flowId));
           errors.push({
@@ -5431,7 +5560,19 @@
       } catch (_) {}
     }
     try {
+      markGotoTargetFlowChartsDirty();
       await processDirtyFlowLoadsAndDetails();
+      await ensureGotoTargetFlowsLoadedInMap();
+      try {
+        const map = namingState.map;
+        if (map && typeof map.findFlowNodeIssues === "function") {
+          map._issues = map.findFlowNodeIssues();
+          map._emit("issues-changed", {
+            issues: map._issues,
+            currentFlowId: map._currentFlowId,
+          });
+        }
+      } catch (_) {}
       const validationResult = validateGotoExecuteNodes();
       state.errors = validationResult.errors;
       state.sameFlowEdges = validationResult.sameFlowEdges;
@@ -5576,14 +5717,7 @@
       if (id) entry.nodesById.set(String(id), node);
       if (ref) entry.nodesByRefId.set(String(ref), node);
     }
-    for (const relation of entry.relations) {
-      const parent = getRelationParentId(relation);
-      if (!parent) continue;
-      const children = getRelationChildIds(relation);
-      for (const child of children) {
-        if (child) entry.parentByChildId.set(String(child), parent);
-      }
-    }
+    rebuildParentLinks(entry);
     return entry;
   }
 
@@ -5596,6 +5730,15 @@
       const children = getRelationChildIds(relation);
       for (const child of children) {
         if (child) chart.parentByChildId.set(String(child), parent);
+      }
+    }
+    for (const node of chart.nodes || []) {
+      const parentId = getNodeId(node);
+      if (!parentId) continue;
+      const children = getNodeChildIds(node);
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (child) chart.parentByChildId.set(String(child), parentId);
       }
     }
   }
@@ -5725,6 +5868,7 @@
     const listIdx = chart.nodes.findIndex((n) => String(n._id || n.id) === String(id));
     if (listIdx >= 0) chart.nodes[listIdx] = node;
     else chart.nodes.push(node);
+    rebuildParentLinks(chart);
     namingLogDebug("node upserted into chart cache", {
       flowId: key,
       nodeId: String(id),
@@ -6013,6 +6157,7 @@
     try {
       if (isInitialScan) {
         await processDirtyFlowLoadsAndDetails();
+        await ensureGotoTargetFlowsLoadedInMap();
       }
       const flows = getFlowsForNamingScan();
       for (let i = 0; i < flows.length; i++) {
@@ -6083,8 +6228,13 @@
     };
   }
 
-  async function ensureParentIfNamingFixed(flowId, nodeId, node, flowMeta) {
-    if (!node || (node.type !== "then" && node.type !== "else")) return;
+  async function ensureParentContainerNamingFixed(flowId, nodeId, node, flowMeta) {
+    const namingMod = CCP.naming;
+    const branchCfg =
+      namingMod && namingMod.BRANCH_CHILD_CONFIG && node && node.type
+        ? namingMod.BRANCH_CHILD_CONFIG[String(node.type)]
+        : null;
+    if (!branchCfg) return;
     const ctx = getAutofixContext();
     if (!ctx.engine) return;
 
@@ -6093,7 +6243,7 @@
     if (!parentId) return;
 
     const parentSummary = chart && chart.nodesById ? chart.nodesById.get(String(parentId)) : null;
-    if (!parentSummary || parentSummary.type !== "if") return;
+    if (!parentSummary || parentSummary.type !== branchCfg.parentType) return;
 
     let parentNode = parentSummary;
     if (ctx.getNodeDetails) {
@@ -6145,7 +6295,7 @@
       throw new Error("Node not found");
     }
 
-    await ensureParentIfNamingFixed(flowId, nodeId, fullNode, flow);
+    await ensureParentContainerNamingFixed(flowId, nodeId, fullNode, flow);
 
     const patch = await ctx.engine.buildNamingFixPatch(fullNode, flowId, { nodeId: nodeId });
     if (!patch || !Object.keys(patch).length) {
@@ -6187,21 +6337,22 @@
         return issue && issue.fixable === true;
       },
       partitionForBatchFix: function (issues) {
-        const ifIssues = [];
+        const parentIssues = [];
         const otherIssues = [];
+        const parentTypes = { if: true, once: true, optionalQuestion: true };
         const list = Array.isArray(issues) ? issues : [];
         for (let i = 0; i < list.length; i++) {
           const issue = list[i];
           const nodeType = issue && issue.node ? String(issue.node.type || "") : "";
-          if (nodeType === "if") {
-            ifIssues.push(issue);
+          if (parentTypes[nodeType]) {
+            parentIssues.push(issue);
           } else {
             otherIssues.push(issue);
           }
         }
-        if (!ifIssues.length) return [otherIssues];
-        if (!otherIssues.length) return [ifIssues];
-        return [ifIssues, otherIssues];
+        if (!parentIssues.length) return [otherIssues];
+        if (!otherIssues.length) return [parentIssues];
+        return [parentIssues, otherIssues];
       },
       applyFix: applyNamingConventionFix,
     });
@@ -6253,6 +6404,10 @@
       context,
       bodyShape: summarizeBodyShape(bodyObj),
     });
+    const namingMod = CCP.naming;
+    if (namingMod && typeof namingMod.applyNodeCreateDefaults === "function") {
+      bodyObj.config = namingMod.applyNodeCreateDefaults(nodeType, bodyObj.config || {});
+    }
     const computed = await computeLabel(nodeType, extension, bodyObj.config || {}, flowId, oldLabel, context);
     if (computed.label != null) {
       const prevLabel = bodyObj.label;

@@ -461,7 +461,6 @@
         if (fromStorage) {
           map._suppressRecompute++;
           try {
-            map._scheduleRecompute();
             map._emit("flows-changed", {});
             map._emit("extensions-changed", {});
             map._emit("llms-changed", {});
@@ -1163,7 +1162,9 @@
       this._sortFlows();
       this._rebuildChartReferenceMaps();
       if (changed) this._emit("flows-changed", {});
-      this._scheduleRecompute();
+      if (this._initialized) {
+        this._scheduleRecompute();
+      }
       this._scheduleSave();
       // If this is our first time seeing flows and we never initialized,
       // kick off a background init for the heavier per-flow data.
@@ -1214,12 +1215,13 @@
       this._rebuildChartReferenceMaps();
       this._chartEntries.set(sid, buildChartEntryFromMergedNodes(merged, chartData.relations || []));
       this._emit("chart-changed", { flowId: sid });
-      this._scheduleRecompute();
       this._scheduleSave();
 
       // Kick off background detail fetches if we have an API client.
       if (needsDetail.length && this._apiClient) {
         this._fetchMissingNodeDetails(sid, needsDetail);
+      } else {
+        this._scheduleRecompute();
       }
     }
 
@@ -1336,12 +1338,51 @@
     // ----- issue detection / structured JSON -------------------------
 
     findFlowNodeIssues() {
+      const self = this;
       return issuesMod.scanProject({
         flows: this._flows,
         llms: this._llms,
         connections: this._connections,
         connectionsByRef: this._connectionsByRef,
         extensionSpecs: this._extensionSpecs,
+        chartEntriesByFlowId: this._chartEntries,
+        getChartCacheEntry: function (flowId) {
+          const local = self.getChartEntry(flowId);
+          if (local && local.nodesByRefId && local.nodesByRefId.size > 0) {
+            return local;
+          }
+          try {
+            const namingApi = window.__CCP__ && window.__CCP__.namingApi;
+            if (namingApi && typeof namingApi.getChartCacheEntry === "function") {
+              const namingEntry = namingApi.getChartCacheEntry(flowId);
+              if (namingEntry) return namingEntry;
+            }
+          } catch (_) {}
+          return local;
+        },
+        isFlowNodesIndexReady: function (flow) {
+          const nodes = flow && flow.nodes;
+          if (Array.isArray(nodes) && nodes.length > 0) return true;
+          const fid = idOf(flow);
+          if (!fid) return false;
+          const chart = self.getChartEntry(fid);
+          if (chart && chart.nodesByRefId && chart.nodesByRefId.size > 0) return true;
+          if (chart && chart.nodesById && chart.nodesById.size > 0) return true;
+          try {
+            const namingApi = window.__CCP__ && window.__CCP__.namingApi;
+            if (namingApi && typeof namingApi.getChartCacheEntry === "function") {
+              const namingEntry = namingApi.getChartCacheEntry(fid);
+              if (namingEntry && namingEntry.nodesByRefId && namingEntry.nodesByRefId.size > 0) {
+                return true;
+              }
+              if (namingEntry && namingEntry.nodesById && namingEntry.nodesById.size > 0) {
+                return true;
+              }
+            }
+          } catch (_) {}
+          return false;
+        },
+        projectIndexReady: this._initialized,
       });
     }
 

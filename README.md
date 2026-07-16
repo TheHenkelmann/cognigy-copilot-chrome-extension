@@ -58,7 +58,7 @@ The naming engine (`inject/naming/naming-engine.js`) applies one of three rules 
 
 **GoTo execution modes:** `executionMode === "continue"` → `GT_`; otherwise → `GTW_`. Execute Flow always uses `EX_`. Self-references use `[SELF]`.
 
-**Analytics steps** are derived from the node label (`node_` + sanitized label, max. 128 characters). Then/Else inherit context from the parent If label.
+**Analytics steps** are derived from the node label (`node_` + sanitized label, max. 128 characters). Branch children of `if`, `once`, and `optionalQuestion` inherit context from their parent container label.
 
 Non-Cognigy extension nodes (extension package not starting with `@cognigy/`) always use the **extension** rule below, regardless of node type.
 
@@ -78,7 +78,7 @@ Non-Cognigy extension nodes (extension package not starting with `@cognigy/`) al
 | ------------------------ | ------ | --------------------- | ---------------------------------------------------------------- |
 | `activateProfile`        | prefix | `aPP`                 | `aPP_Description`                                                |
 | `addToContext`           | prefix | `aCC`                 | `aCC_Description`                                                |
-| `afterwards`             | prefix | `after`               | `after_Description`                                              |
+| `afterwards`             | custom | branch-child handler  | `Afterwards` (analytics derived from parent Once)                |
 | `aiAgentHandover`        | custom | tool handler          | `T_{toolId}`                                                     |
 | `aiAgentJob`             | prefix | `Agent`               | `Agent_Description`                                              |
 | `aiAgentJobDefault`      | static | —                     | `T_default`                                                      |
@@ -94,7 +94,7 @@ Non-Cognigy extension nodes (extension package not starting with `@cognigy/`) al
 | `default`                | static | —                     | `C_default`                                                      |
 | `deleteProfile`          | prefix | `rmPP`                | `rmPP_Description`                                               |
 | `detectLanguage`         | prefix | `Lang`                | `Lang_Description`                                               |
-| `else`                   | custom | then/else handler     | `Else` (analytics derived from parent If)                        |
+| `else`                   | custom | branch-child handler  | `Else` (analytics derived from parent If)                        |
 | `emailNotification`      | prefix | `MAIL`                | `MAIL_Description`                                               |
 | `end`                    | custom | start/end handler     | `End_{flowName}`                                                 |
 | `executeFlow`            | custom | goto/execute handler  | `EX_[FlowName]` or `EX_[SELF]`, optional target node label       |
@@ -112,9 +112,9 @@ Non-Cognigy extension nodes (extension package not starting with `@cognigy/`) al
 | `llmPromptV2`            | prefix | `LLM`                 | `LLM_Description`                                                |
 | `log`                    | prefix | `🪵`                  | `🪵_Description`                                                 |
 | `mergeProfile`           | prefix | `mPP`                 | `mPP_Description`                                                |
-| `onAnswer`               | static | —                     | `On Answer`                                                      |
-| `onFirstExecution`       | prefix | `oFT`                 | `oFT_Description`                                                |
-| `onQuestion`             | static | —                     | `On Question`                                                    |
+| `onAnswer`               | custom | branch-child handler  | `On Answer` (analytics derived from parent Optional Question)    |
+| `onFirstExecution`       | custom | branch-child handler  | `On First Time` (analytics derived from parent Once)             |
+| `onQuestion`             | custom | branch-child handler  | `On Question` (analytics derived from parent Optional Question)  |
 | `once`                   | prefix | `Once`                | `Once_Description`                                               |
 | `optionalQuestion`       | prefix | `OQ`                  | `OQ_Description`                                                 |
 | `overwriteAnalytics`     | prefix | `A`                   | `A_Description`                                                  |
@@ -132,7 +132,7 @@ Non-Cognigy extension nodes (extension package not starting with `@cognigy/`) al
 | `start`                  | custom | start/end handler     | `Start_{flowName}`                                               |
 | `stop`                   | static | —                     | `Stop and Return`                                                |
 | `switch`                 | prefix | `Lookup`              | `Lookup_Description`                                             |
-| `then`                   | custom | then/else handler     | `Then` (analytics derived from parent If)                        |
+| `then`                   | custom | branch-child handler  | `Then` (analytics derived from parent If)                        |
 | `think`                  | prefix | `Think`               | `Think_Description`                                              |
 | `trackGoal`              | prefix | `TG`                  | `TG_Description`                                                 |
 | `triggerFunction`        | prefix | `Fn`                  | `Fn_Description`                                                 |

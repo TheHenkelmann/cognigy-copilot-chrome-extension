@@ -38,6 +38,9 @@
   const DIFF_JSON_KEY_ORDER_SET = new Set(DIFF_JSON_KEY_ORDER);
 
   function canonicalizeForDiff(value) {
+    if (CCP.yaml && typeof CCP.yaml.canonicalizeForDiff === "function") {
+      return CCP.yaml.canonicalizeForDiff(value);
+    }
     if (value === null || value === undefined) return value;
     if (Array.isArray(value)) {
       return value.map(canonicalizeForDiff);
@@ -65,15 +68,18 @@
     return out;
   }
 
-  function prettyJson(value) {
+  function prettyYaml(value) {
     try {
+      if (CCP.yaml && typeof CCP.yaml.emit === "function") {
+        return CCP.yaml.emit(value, { canonicalize: true });
+      }
       return JSON.stringify(canonicalizeForDiff(value), null, 2);
     } catch (_) {
       return String(value);
     }
   }
 
-  rel.prettyJsonForDiff = prettyJson;
+  rel.prettyJsonForDiff = prettyYaml;
   rel.canonicalizeForDiff = canonicalizeForDiff;
 
   function lcsDiffLines(oldText, newText) {
@@ -140,7 +146,7 @@
         results.push({
           name: name,
           status: "removed",
-          oldJson: prettyJson(oldF.nodes != null ? oldF.nodes : oldF),
+          oldJson: prettyYaml(oldF.nodes != null ? oldF.nodes : oldF),
           newJson: "",
         });
         return;
@@ -150,12 +156,12 @@
           name: name,
           status: "added",
           oldJson: "",
-          newJson: prettyJson(newF.nodes != null ? newF.nodes : newF),
+          newJson: prettyYaml(newF.nodes != null ? newF.nodes : newF),
         });
         return;
       }
-      const oldJson = prettyJson(oldF.nodes != null ? oldF.nodes : oldF);
-      const newJson = prettyJson(newF.nodes != null ? newF.nodes : newF);
+      const oldJson = prettyYaml(oldF.nodes != null ? oldF.nodes : oldF);
+      const newJson = prettyYaml(newF.nodes != null ? newF.nodes : newF);
       results.push({
         name: name,
         status: oldJson === newJson ? "unchanged" : "changed",
@@ -255,6 +261,14 @@
     const storage = getStorage();
     if (!storage) return [];
     return storage.loadAllReleases();
+  };
+
+  rel.delete = async function deleteRelease(releaseName) {
+    const storage = getStorage();
+    if (!storage) throw new Error("Release storage unavailable");
+    const name = String(releaseName || "").trim();
+    if (!name) throw new Error("release_name required");
+    return storage.deleteRelease(name);
   };
 
   rel.getLatestStoredRelease = async function getLatestStoredRelease() {

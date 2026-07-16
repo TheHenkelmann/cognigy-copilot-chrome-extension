@@ -22,7 +22,7 @@
   const flowCode = (CCP.flowCode = CCP.flowCode || {});
 
   const FLOW_CODE_HOST_ID = "flowCodeEditorHost";
-  const FLOW_CODE_MODEL_LANGUAGE = "json";
+  const FLOW_CODE_MODEL_LANGUAGE = "yaml";
   const MARKER_OWNER = "ccp-project-map";
 
   const state = {
@@ -225,8 +225,7 @@
       formatOnType: false,
     });
 
-    // JSON language defaults already do schema diagnostics; disable that
-    // since our content is generated and trusted.
+    // JSON language defaults are unused in yaml mode; kept for rare fallback paths.
     try {
       if (monaco.languages && monaco.languages.json && monaco.languages.json.jsonDefaults) {
         monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
@@ -245,7 +244,7 @@
     if (!key || !state.monaco) return null;
     let model = state.modelsByFlowId.get(key) || null;
     if (model && !model.isDisposed()) return model;
-    const uri = state.monaco.Uri.parse("inmemory://flow-code/" + key + ".json");
+    const uri = state.monaco.Uri.parse("inmemory://flow-code/" + key + ".yaml");
     model = state.monaco.editor.createModel("", FLOW_CODE_MODEL_LANGUAGE, uri);
     state.modelsByFlowId.set(key, model);
     return model;
@@ -278,18 +277,24 @@
     return monaco.MarkerSeverity.Info;
   }
 
+  function escapeRegexLiteral(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
   /**
    * Try to find the line in `text` that contains the given node id. The
-   * structured-JSON output stamps `"_id": "<node id>"` into every node,
-   * so locating the line is a string search. We fall back to line 1 if
+   * structured-JSON output stamps `_id: <node id>` into every node,
+   * so locating the line is a pattern search. We fall back to line 1 if
    * the id can't be found (e.g. for project-level issues).
    */
   function locateNodeLine(text, nodeId) {
     if (!text || !nodeId) return 1;
-    const idx = text.indexOf('"' + String(nodeId) + '"');
-    if (idx < 0) return 1;
+    const id = escapeRegexLiteral(nodeId);
+    const re = new RegExp("(^|\\n)\\s*_id:\\s*[\"']?" + id + "[\"']?\\s*$", "m");
+    const match = re.exec(String(text));
+    if (!match) return 1;
     let line = 1;
-    for (let i = 0; i < idx; i++) {
+    for (let i = 0; i < match.index; i++) {
       if (text.charCodeAt(i) === 10) line++;
     }
     return line;
@@ -434,12 +439,15 @@
     }
   }
 
-  function jsonToText(value) {
+  function flowToText(value) {
     if (value == null) return "";
     try {
+      if (CCP.yaml && typeof CCP.yaml.emit === "function") {
+        return CCP.yaml.emit(value, { canonicalize: true });
+      }
       return JSON.stringify(value, null, 2);
     } catch (e) {
-      console.warn(LOG_PREFIX, "flow-code JSON stringify failed", e);
+      console.warn(LOG_PREFIX, "flow-code YAML emit failed", e);
       try {
         return String(value);
       } catch (_) {
@@ -451,7 +459,7 @@
   async function refreshModelContent(flowId) {
     if (!flowId) return;
     const json = await structuredJsonForFlowAsync(flowId);
-    const text = jsonToText(json);
+    const text = flowToText(json);
     if (state.monaco) {
       const model = ensureModelForFlow(flowId);
       if (model) {
@@ -486,7 +494,7 @@
       console.warn(LOG_PREFIX, "flow-code structured JSON unavailable", { flowId: String(flowId) });
       return { ok: false, reason: "flow-data-unavailable" };
     }
-    const text = jsonToText(json);
+    const text = flowToText(json);
 
     // Always paint JSON immediately — never block the Code tab on Monaco.
     if (flowCode.view && typeof flowCode.view.showFallbackText === "function") {

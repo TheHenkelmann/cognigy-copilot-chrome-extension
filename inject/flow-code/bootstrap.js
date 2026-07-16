@@ -3,6 +3,12 @@
   const LOG_PREFIX = CCP.LOG_PREFIX || "[CognigyCopilot:INJ]";
   const flowCode = (CCP.flowCode = CCP.flowCode || {});
 
+  function notifyCodeViewFailure(reason, message) {
+    if (CCP.snackbar) {
+      CCP.snackbar.warning("Code-Ansicht nicht verfügbar", message || String(reason || "unknown-error"));
+    }
+  }
+
   if (flowCode.__bootstrapped) {
     return;
   }
@@ -107,6 +113,7 @@
           if (typeof view.setStatus === "function") {
             view.setStatus("Code view unavailable (" + failureReason + ").");
           }
+          notifyCodeViewFailure(failureReason);
         }
       } else {
         failureReason = "editor-module-missing";
@@ -114,6 +121,7 @@
         if (typeof view.setStatus === "function") {
           view.setStatus("Code view unavailable (editor-module-missing).");
         }
+        notifyCodeViewFailure("editor-module-missing");
       }
     } catch (error) {
       failureReason = "render-exception";
@@ -122,6 +130,7 @@
       if (typeof view.setStatus === "function") {
         view.setStatus("Code view unavailable (render-exception).");
       }
+      notifyCodeViewFailure("render-exception", error instanceof Error ? error.message : String(error));
     } finally {
       // Only lock "already rendered" state after a successful render.
       // Otherwise keep retrying while Monaco/chart become available.

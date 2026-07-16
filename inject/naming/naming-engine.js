@@ -17,6 +17,15 @@
   const FORBIDDEN_ANALYTICS_PATTERN = /[\/:*?"<>|¥!&$§%=»,.;+~#`'°µ€]/g;
   const MAX_ANALYTICS_LENGTH = 128;
 
+  const BRANCH_CHILD_CONFIG = {
+    then: { parentType: "if", parentPrefix: "If", branchLabel: "Then" },
+    else: { parentType: "if", parentPrefix: "If", branchLabel: "Else" },
+    onFirstExecution: { parentType: "once", parentPrefix: "Once", branchLabel: "On First Time" },
+    afterwards: { parentType: "once", parentPrefix: "Once", branchLabel: "Afterwards" },
+    onQuestion: { parentType: "optionalQuestion", parentPrefix: "OQ", branchLabel: "On Question" },
+    onAnswer: { parentType: "optionalQuestion", parentPrefix: "OQ", branchLabel: "On Answer" },
+  };
+
   const NAMING_RULES = [
     {
       nodeType: "activateProfile",
@@ -26,7 +35,13 @@
       enabled: true,
     },
     { nodeType: "addToContext", defaultName: "Add To Context", rule: "prefix", value: "aCC", enabled: true },
-    { nodeType: "afterwards", defaultName: "Afterwards", rule: "prefix", value: "after", enabled: true },
+    {
+      nodeType: "afterwards",
+      defaultName: "Afterwards",
+      rule: "custom",
+      value: "handle_branch_child",
+      enabled: true,
+    },
     {
       nodeType: "aiAgentHandover",
       defaultName: "Handover",
@@ -84,7 +99,7 @@
       enabled: true,
     },
     { nodeType: "detectLanguage", defaultName: null, rule: "prefix", value: "Lang", enabled: true },
-    { nodeType: "else", defaultName: "Else", rule: "custom", value: "handle_then_else", enabled: true },
+    { nodeType: "else", defaultName: "Else", rule: "custom", value: "handle_branch_child", enabled: true },
     {
       nodeType: "emailNotification",
       defaultName: "Email Notification",
@@ -149,19 +164,25 @@
     { nodeType: "llmPromptV2", defaultName: "LLM Prompt", rule: "prefix", value: "LLM", enabled: true },
     { nodeType: "log", defaultName: "Log Message", rule: "prefix", value: "🪵", enabled: true },
     { nodeType: "mergeProfile", defaultName: "Merge Profile", rule: "prefix", value: "mPP", enabled: true },
-    { nodeType: "onAnswer", defaultName: "On Answer", rule: "static", value: "On Answer", enabled: true },
+    {
+      nodeType: "onAnswer",
+      defaultName: "On Answer",
+      rule: "custom",
+      value: "handle_branch_child",
+      enabled: true,
+    },
     {
       nodeType: "onFirstExecution",
       defaultName: "On First Time",
-      rule: "prefix",
-      value: "oFT",
+      rule: "custom",
+      value: "handle_branch_child",
       enabled: true,
     },
     {
       nodeType: "onQuestion",
       defaultName: "On Question",
-      rule: "static",
-      value: "On Question",
+      rule: "custom",
+      value: "handle_branch_child",
       enabled: true,
     },
     { nodeType: "once", defaultName: "Once", rule: "prefix", value: "Once", enabled: true },
@@ -217,7 +238,7 @@
       enabled: true,
     },
     { nodeType: "switch", defaultName: "Lookup", rule: "prefix", value: "Lookup", enabled: true },
-    { nodeType: "then", defaultName: "Then", rule: "custom", value: "handle_then_else", enabled: true },
+    { nodeType: "then", defaultName: "Then", rule: "custom", value: "handle_branch_child", enabled: true },
     { nodeType: "think", defaultName: "Think", rule: "prefix", value: "Think", enabled: true },
     { nodeType: "trackGoal", defaultName: "Track Goal", rule: "prefix", value: "TG", enabled: true },
     {
@@ -357,21 +378,53 @@
     };
   }
 
-  function suffixFromIfLabel(ifLabel) {
-    const label = String(ifLabel || "").trim();
-    if (!label) return "";
-    const ifPrefix = "If";
-    if (label.startsWith(ifPrefix + NAMING_DELIMITER)) {
-      return label.slice((ifPrefix + NAMING_DELIMITER).length).trim();
+  function suffixFromParentLabel(parentLabel, parentPrefix) {
+    const label = String(parentLabel || "").trim();
+    const prefix = String(parentPrefix || "").trim();
+    if (!label || !prefix) return "";
+    if (label.startsWith(prefix + NAMING_DELIMITER)) {
+      return label.slice((prefix + NAMING_DELIMITER).length).trim();
     }
-    if (label === ifPrefix) return "";
+    if (label === prefix) return "";
     return label;
   }
 
-  function buildThenElseAnalyticsSource(branchLabel, ifLabel) {
-    const suffix = suffixFromIfLabel(ifLabel);
+  function buildBranchChildAnalyticsSource(branchLabel, parentLabel, parentPrefix) {
+    const suffix = suffixFromParentLabel(parentLabel, parentPrefix);
     if (!suffix) return branchLabel;
     return branchLabel + NAMING_DELIMITER + suffix;
+  }
+
+  function childIdsOf(node) {
+    if (!node || typeof node !== "object") return [];
+    const raw = node.child_node_ids || node.childNodeIds || node.children || node.childNodes || [];
+    return Array.isArray(raw) ? raw.map((id) => String(id)).filter(Boolean) : [];
+  }
+
+  function findParentIdByChildNodeIds(chart, nodeId, expectedParentType) {
+    if (!chart || !chart.nodesById || !nodeId) return "";
+    for (const [parentId, summary] of chart.nodesById.entries()) {
+      if (!summary || String(summary.type || "") !== expectedParentType) continue;
+      const children = childIdsOf(summary);
+      if (children.indexOf(String(nodeId)) >= 0) return String(parentId);
+    }
+    return "";
+  }
+
+  function findParentInFlowNodes(flowNodes, nodeId, expectedParentType) {
+    if (!Array.isArray(flowNodes) || !nodeId) {
+      return { parentId: "", parentNode: null };
+    }
+    for (let i = 0; i < flowNodes.length; i++) {
+      const node = flowNodes[i];
+      if (!node || String(node.type || "") !== expectedParentType) continue;
+      const children = childIdsOf(node);
+      if (children.indexOf(String(nodeId)) >= 0) {
+        const parentId = node.id || node._id ? String(node.id || node._id) : "";
+        return { parentId: parentId, parentNode: node };
+      }
+    }
+    return { parentId: "", parentNode: null };
   }
 
   function createEngine(deps) {
@@ -401,6 +454,11 @@
       options.resolveNodeSummaryByRefId ||
       function () {
         return Promise.resolve(null);
+      };
+    const getFlowNodes =
+      options.getFlowNodes ||
+      function () {
+        return [];
       };
 
     async function handleStartEnd(nodeType, _config, flowId) {
@@ -432,38 +490,61 @@
       return prefix;
     }
 
-    async function resolveParentIfContext(flowId, context) {
+    async function resolveParentContainerContext(flowId, context, expectedParentType) {
+      const nodeId = context && context.nodeId ? String(context.nodeId) : "";
       let parentId = "";
       if (context && context.targetNodeId) {
         parentId = String(context.targetNodeId);
       }
+      let parentSummary = null;
       if (!parentId) {
         const chart = getChart(flowId);
-        const nodeId = context && context.nodeId ? String(context.nodeId) : "";
         parentId = chart && nodeId && chart.parentByChildId ? chart.parentByChildId.get(nodeId) || "" : "";
+        if (!parentId && chart && nodeId) {
+          parentId = findParentIdByChildNodeIds(chart, nodeId, expectedParentType);
+        }
+      }
+      if (!parentId && nodeId) {
+        const flowNodes =
+          context && Array.isArray(context.flowNodes) ? context.flowNodes : getFlowNodes(flowId);
+        const found = findParentInFlowNodes(flowNodes, nodeId, expectedParentType);
+        parentId = found.parentId;
+        parentSummary = found.parentNode;
       }
       if (!parentId) {
-        return { parentId: "", parentLabel: "" };
+        return { parentId: "", parentLabel: "", resolved: false };
       }
-      const chart = getChart(flowId);
-      const parentSummary = chart && chart.nodesById ? chart.nodesById.get(String(parentId)) : null;
-      if (!parentSummary || parentSummary.type !== "if") {
-        return { parentId: parentId, parentLabel: "" };
+      if (!parentSummary) {
+        const chart = getChart(flowId);
+        parentSummary = chart && chart.nodesById ? chart.nodesById.get(String(parentId)) : null;
+      }
+      if (!parentSummary || parentSummary.type !== expectedParentType) {
+        return { parentId: parentId, parentLabel: "", resolved: false };
       }
       let parentLabel = String(parentSummary.label || "");
       const parentDetails = await getNodeDetails(flowId, parentId);
       if (parentDetails && parentDetails.label != null) {
         parentLabel = String(parentDetails.label);
       }
-      return { parentId: parentId, parentLabel: parentLabel };
+      return { parentId: parentId, parentLabel: parentLabel, resolved: true };
     }
 
-    async function handleThenElse(nodeType, _config, flowId, _oldLabel, _ruleCfg, context) {
-      const branchLabel = nodeType === "then" ? "Then" : "Else";
-      const parentCtx = await resolveParentIfContext(flowId, context || {});
+    async function resolveParentIfContext(flowId, context) {
+      return resolveParentContainerContext(flowId, context, "if");
+    }
+
+    async function handleBranchChild(nodeType, _config, flowId, _oldLabel, _ruleCfg, context) {
+      const branchCfg = BRANCH_CHILD_CONFIG[nodeType];
+      if (!branchCfg) return null;
+      const parentCtx = await resolveParentContainerContext(flowId, context || {}, branchCfg.parentType);
+      if (!parentCtx.resolved) return null;
       return {
-        label: branchLabel,
-        analyticsSource: buildThenElseAnalyticsSource(branchLabel, parentCtx.parentLabel),
+        label: branchCfg.branchLabel,
+        analyticsSource: buildBranchChildAnalyticsSource(
+          branchCfg.branchLabel,
+          parentCtx.parentLabel,
+          branchCfg.parentPrefix
+        ),
       };
     }
 
@@ -515,7 +596,7 @@
       handle_tool_nodes: handleToolNodes,
       handle_case: handleCase,
       handle_if: handleIf,
-      handle_then_else: handleThenElse,
+      handle_branch_child: handleBranchChild,
       handle_goto_execute_flow: handleGoToExecuteFlow,
       handle_complete_goal: handleCompleteGoal,
       handle_sleep: handleSleep,
@@ -586,6 +667,10 @@
 
       const computed = await computeLabel(nodeType, extension, config, String(flowId), currentLabel, context);
 
+      if (BRANCH_CHILD_CONFIG[nodeType] && computed.label == null) {
+        return null;
+      }
+
       const labelViolation = computed.label != null && currentLabel !== computed.label;
       let expectedAnalytics = "";
       if (computed.label != null) {
@@ -651,12 +736,17 @@
       evaluateNodeNaming,
       buildNamingFixPatch,
       resolveParentIfContext,
+      resolveParentContainerContext,
       RULES_BY_TYPE,
     };
   }
 
   naming.ISSUE_TYPE_NAMING_CONVENTION = "naming_convention_violation";
+  naming.BRANCH_CHILD_CONFIG = BRANCH_CHILD_CONFIG;
   naming.NAMING_RULES = NAMING_RULES;
+  naming.suffixFromParentLabel = suffixFromParentLabel;
+  naming.buildBranchChildAnalyticsSource = buildBranchChildAnalyticsSource;
+  naming.findParentInFlowNodes = findParentInFlowNodes;
   naming.ANALYTICS_LABEL_PREFIX = ANALYTICS_LABEL_PREFIX;
   naming.createEngine = createEngine;
   naming.sanitizeAnalyticsLabel = sanitizeAnalyticsLabel;

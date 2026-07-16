@@ -2,6 +2,9 @@ import { vi } from "vitest";
 
 const MODULE_IMPORTS = {
   "inject/naming/naming-engine.js": () => import("../../inject/naming/naming-engine.js"),
+  "inject/naming/node-create-defaults.js": () => import("../../inject/naming/node-create-defaults.js"),
+  "inject/project-map/node-constants.js": () => import("../../inject/project-map/node-constants.js"),
+  "inject/project-map/issues.js": () => import("../../inject/project-map/issues.js"),
   "inject/project-map/structured-json.js": () => import("../../inject/project-map/structured-json.js"),
 };
 

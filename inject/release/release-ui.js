@@ -19,6 +19,7 @@
     { id: "gemini-3.1-pro-preview", label: "gemini-3.1-pro-preview" },
   ];
   const DEFAULT_MODEL = "gemini-3.5-flash";
+  const DIFF_CURRENT_VALUE = "__current__";
   const FEATURES = {
     aiGenerate: false,
     releaseMessage: false,
@@ -81,6 +82,7 @@
   const state = {
     overlay: null,
     settingsOverlay: null,
+    manageOverlay: null,
     activeTab: "check",
     checkRunning: false,
     checkSkipped: false,
@@ -90,8 +92,8 @@
     buildRunning: false,
     snapshots: [],
     releasesByName: {},
-    selectedSnapshotName: "",
-    baselineRelease: null,
+    selectedOldSide: DIFF_CURRENT_VALUE,
+    selectedNewSide: DIFF_CURRENT_VALUE,
     currentFlows: [],
     diffFlows: [],
     selectedFlowName: "",
@@ -106,6 +108,7 @@
     storedReleaseNames: [],
     nameTakenByUser: false,
     buildReleaseName: "",
+    tabsRendered: {},
   };
 
   const diffViewerState = {
@@ -118,8 +121,6 @@
     currentFlows: [],
     diffFlows: [],
     selectedFlowName: "",
-    selectedSnapshotName: "",
-    baselineRelease: null,
   };
 
   function el(tag, cls, text) {
@@ -258,6 +259,37 @@
       ".ccp-rel-diff-panel .ccp-rel-snap-select{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:4px;border:1px solid #454545;background:#3c3c3c;color:#cccccc;font-size:12px;font-family:inherit;}",
       ".ccp-rel-diff-panel .ccp-rel-snap-select option:disabled{color:#858585;}",
       ".ccp-rel-diff-panel .ccp-rel-snap-select option{background:#3c3c3c;color:#cccccc;}",
+      ".ccp-rel-snap-row{display:flex;gap:8px;align-items:center;width:100%;}",
+      ".ccp-rel-snap-label-row{display:flex;align-items:center;width:100%;}",
+      ".ccp-rel-snap-label-row .ccp-rel-label{margin:0;}",
+      ".ccp-rel-snap-row .ccp-rel-snap-select{flex:1;min-width:0;width:auto;box-sizing:border-box;padding:8px 10px;border-radius:4px;border:1px solid #454545;background:#3c3c3c;color:#cccccc;font-size:12px;font-family:inherit;}",
+      ".ccp-rel-snap-gear{width:30px;height:30px;padding:0;flex-shrink:0;}",
+      ".ccp-rel-diff-sidebar-head .ccp-rel-annotate-copy-row{width:100%;flex-wrap:nowrap;}",
+      ".ccp-rel-diff-sidebar-head .ccp-rel-annotate-copy-row .ccp-rel-btn{flex:1;min-width:0;justify-content:center;}",
+      ".ccp-rel-confirm-overlay{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;}",
+      ".ccp-rel-confirm-card{max-width:440px;width:100%;padding:20px;border-radius:12px;background:#181b22;border:1px solid rgba(255,255,255,0.12);box-shadow:0 20px 60px rgba(0,0,0,0.5);color:#ececec;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}",
+      ".ccp-rel-confirm-title{font-size:16px;font-weight:700;margin:0 0 10px;}",
+      ".ccp-rel-confirm-text{font-size:13px;line-height:1.5;color:rgba(220,220,220,0.9);margin:0 0 12px;}",
+      ".ccp-rel-confirm-phrase{display:block;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#fde68a;margin-bottom:12px;word-break:break-all;}",
+      ".ccp-rel-confirm-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;}",
+      ".ccp-rel-confirm-err{font-size:12px;color:#fca5a5;margin-top:8px;min-height:16px;}",
+      ".ccp-rel-cleanup-card{max-width:760px;width:100%;max-height:85vh;display:flex;flex-direction:column;padding:20px;border-radius:12px;background:#181b22;border:1px solid rgba(255,255,255,0.12);box-shadow:0 20px 60px rgba(0,0,0,0.5);color:#ececec;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;box-sizing:border-box;}",
+      ".ccp-rel-cleanup-title{font-size:16px;font-weight:700;margin:0 0 10px;}",
+      ".ccp-rel-cleanup-info{margin-bottom:14px;}",
+      ".ccp-rel-cleanup-body{flex:1;min-height:0;overflow:auto;margin-bottom:14px;}",
+      ".ccp-rel-cleanup-list{display:flex;flex-direction:column;gap:8px;}",
+      ".ccp-rel-cleanup-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;background:rgba(0,0,0,0.22);border:1px solid rgba(255,255,255,0.08);}",
+      ".ccp-rel-cleanup-item-main{flex:1;min-width:0;}",
+      ".ccp-rel-cleanup-item-name{font-size:13px;font-weight:600;color:#eee;line-height:1.35;word-break:break-word;}",
+      ".ccp-rel-cleanup-item-meta{font-size:11px;color:rgba(180,180,180,0.9);margin-top:3px;line-height:1.4;}",
+      ".ccp-rel-cleanup-item-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}",
+      ".ccp-rel-cleanup-item-actions .ccp-rel-btn{padding:6px 10px;font-size:11px;white-space:nowrap;}",
+      ".ccp-rel-cleanup-err{margin-top:6px;font-size:11px;line-height:1.4;color:#f87171;}",
+      ".ccp-rel-cleanup-footer{display:flex;justify-content:flex-end;gap:8px;flex-shrink:0;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);}",
+      ".ccp-rel-manage-overlay .ccp-rel-manage-body{flex:1;min-height:0;overflow:auto;padding:18px;}",
+      ".ccp-rel-manage-list{display:flex;flex-direction:column;gap:8px;max-width:960px;margin:0 auto;}",
+      ".ccp-rel-fab-gear{width:26px;height:26px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#ddd;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:13px;padding:0;}",
+      ".ccp-rel-fab-gear:hover{background:rgba(255,255,255,0.1);}",
       ".ccp-rel-diff-sidebar .ccp-rel-flow-list{flex:1;min-height:0;border-left:none;width:100%;max-width:100%;flex-basis:auto;background:#252526;}",
       ".ccp-rel-diff-panel .ccp-rel-flow-item{border-bottom:1px solid #333333;color:#cccccc;}",
       ".ccp-rel-diff-panel .ccp-rel-flow-item:hover{background:#2a2d2e;}",
@@ -266,6 +298,12 @@
       ".ccp-rel-diff-panel .ccp-rel-btn:hover:not(:disabled){background:#505050;color:#ffffff;}",
       ".ccp-rel-diff-panel .ccp-rel-btn.ccp-rel-btn-copied{background:#094771!important;border-color:#007acc!important;color:#ffffff!important;}",
       ".ccp-rel-diff-empty{padding:24px;font-size:13px;color:#858585;}",
+      ".ccp-rel-diff-editor-toolbar{display:flex;flex-shrink:0;border-bottom:1px solid #454545;background:#252526;}",
+      ".ccp-rel-diff-side-toolbar{flex:1 1 50%;min-width:0;padding:8px 12px;box-sizing:border-box;display:flex;flex-direction:column;gap:4px;}",
+      ".ccp-rel-diff-side-toolbar-new{border-left:1px solid #454545;}",
+      ".ccp-rel-diff-side-toolbar .ccp-rel-label{margin:0;font-size:11px;color:#858585;}",
+      ".ccp-rel-diff-side-toolbar .ccp-rel-snap-row{width:100%;}",
+      ".ccp-rel-diff-side-toolbar .ccp-rel-snap-select{width:100%;}",
       ".ccp-rel-settings-card{max-width:480px;margin:10vh auto;padding:20px;border-radius:12px;background:#181b22;border:1px solid rgba(255,255,255,0.1);box-shadow:0 20px 60px rgba(0,0,0,0.5);}",
       ".ccp-rel-settings-row{margin-bottom:14px;}",
       ".ccp-rel-pw-wrap{display:flex;gap:8px;align-items:center;}",
@@ -676,15 +714,25 @@
     return buildPlaybookRunUrl(pbId, runId);
   }
 
+  function playbookRunResultStatus(run) {
+    return String((run && run.runResult && run.runResult.status) || "").toLowerCase();
+  }
+
   function playbookUiStatus(run, phase) {
     if (phase === "start") return "running";
     if (!run) return "open";
     if (run.error || String(run.status || "").toLowerCase() === "error") return "failed";
     const st = String(run.status || "").toLowerCase();
-    if (st === "done") return "success";
     if (st === "cancelled" || st === "cancelling") return "failed";
-    if (phase === "done" && playbookRunFailed(run)) return "failed";
-    if (phase === "done") return "success";
+    const result = playbookRunResultStatus(run);
+    if (result === "failed" || result === "unknown") return "failed";
+    if (result === "successful") return "success";
+    if (st === "done") {
+      // Task finished, but the run verdict isn't resolved yet — keep it
+      // "running" so we don't flash a premature success.
+      if (phase === "done") return playbookRunFailed(run) ? "failed" : "success";
+      return "running";
+    }
     if (st === "active") return "running";
     if (st === "queued" || st === "pending") return "open";
     return "open";
@@ -695,9 +743,12 @@
     if (!run) return "";
     if (run.error) return String(run.error);
     const st = String(run.status || "").toLowerCase();
+    const result = playbookRunResultStatus(run);
+    if (result === "successful") return "Erfolgreich";
+    if (result === "failed") return "Fehlgeschlagen";
+    if (st === "done") return "Prüfe Ergebnis…";
     if (phase === "scheduled" && st === "queued") return "Geplant";
     if (st === "active") return "Task läuft…";
-    if (st === "done") return "Erfolgreich";
     if (st === "queued" || st === "pending") return "Wartet…";
     if (phase === "done") return playbookRunMessage(run);
     return st || "";
@@ -892,13 +943,22 @@
   function playbookRunMessage(run) {
     if (!run) return "";
     if (run.error) return String(run.error);
+    const result = playbookRunResultStatus(run);
+    if (result === "successful") return "Erfolgreich";
+    if (result === "failed") return "Fehlgeschlagen";
     const st = String(run.status || "").toLowerCase();
     if (st === "done") return "Erfolgreich";
     return st || "Unbekannt";
   }
 
   function playbookRunFailed(run) {
-    return !!(run && (run.error || String(run.status || "").toLowerCase() !== "done"));
+    if (!run) return true;
+    if (run.error) return true;
+    const result = playbookRunResultStatus(run);
+    if (result === "failed" || result === "unknown") return true;
+    if (result === "successful") return false;
+    // No verdict resolved: fall back to the task lifecycle status.
+    return String(run.status || "").toLowerCase() !== "done";
   }
 
   function appendStepError(detailEl, message) {
@@ -1343,34 +1403,15 @@
       state.snapshots = [];
       console.warn("[CCP release-ui] listSnapshots failed", e);
     }
-    if (state.snapshots.length >= 10) {
-      const oldest = state.snapshots.slice().sort(function (a, b) {
-        return (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0);
-      })[0];
-      if (oldest && (oldest._id || oldest.id)) {
-        try {
-          await CCP.release.api.waitForDeleteSnapshot(oldest._id || oldest.id);
-          state.snapshots = await CCP.release.api.listSnapshots(projectId);
-        } catch (e) {
-          console.warn("[CCP release-ui] delete oldest snapshot failed", e);
-        }
-      }
-    }
     const releases = await CCP.release.loadAllReleases();
     state.releasesByName = {};
     (releases || []).forEach(function (r) {
       if (r && r.release_name) state.releasesByName[String(r.release_name)] = r;
     });
+    state.snapshots = mergeSnapshotsWithLocalReleases(state.snapshots, state.releasesByName);
     const payload = await CCP.release.buildCurrentReleasePayload({ release_name: state.releaseName });
     state.currentFlows = payload.flows || [];
-    state.baselineRelease = null;
-    state.selectedSnapshotName = "";
-    const defaultSnap = pickDefaultSnapshot(state.snapshots, state.releasesByName);
-    if (defaultSnap) applyDiffViewerBaseline(state, defaultSnap);
-    else {
-      state.diffFlows = buildDiffFlowsList([], state.currentFlows);
-      state.selectedFlowName = pickDefaultFlowName(state.diffFlows);
-    }
+    applyDiffDefaults(state);
   }
 
   function updateDiffEditor(host, ctx) {
@@ -1499,12 +1540,12 @@
     });
     if (!sel) return;
     if (ctx.singleEditor) {
-      ctx.singleEditor.setValue(sel.newJson || "{}");
+      ctx.singleEditor.setValue(sel.newJson || "");
       return;
     }
     if (!ctx.diffEditor) return;
-    const orig = state.monaco.editor.createModel(sel.oldJson || "{}", "json");
-    const mod = state.monaco.editor.createModel(sel.newJson || "{}", "json");
+    const orig = state.monaco.editor.createModel(sel.oldJson || "", "yaml");
+    const mod = state.monaco.editor.createModel(sel.newJson || "", "yaml");
     ctx.diffEditor.setModel({ original: orig, modified: mod });
   }
 
@@ -1513,23 +1554,14 @@
     if (!host) return false;
     if (!monaco) {
       host.textContent = "Monaco Editor nicht verfügbar.";
+      if (CCP.snackbar) CCP.snackbar.error("Monaco Editor nicht verfügbar");
       return false;
     }
     disposeMonacoEditors(ctx.diffEditor, ctx.singleEditor);
     ctx.diffEditor = null;
     ctx.singleEditor = null;
     host.innerHTML = "";
-    const useSingle = !ctx.baselineRelease;
-    if (useSingle && typeof monaco.editor.create === "function") {
-      ctx.singleEditor = monaco.editor.create(host, {
-        value: "{}",
-        language: "json",
-        readOnly: true,
-        automaticLayout: true,
-        theme: "vs-dark",
-        minimap: { enabled: false },
-      });
-    } else if (typeof monaco.editor.createDiffEditor === "function") {
+    if (typeof monaco.editor.createDiffEditor === "function") {
       ctx.diffEditor = monaco.editor.createDiffEditor(host, {
         readOnly: true,
         automaticLayout: true,
@@ -1539,8 +1571,8 @@
       });
     } else if (typeof monaco.editor.create === "function") {
       ctx.singleEditor = monaco.editor.create(host, {
-        value: "{}",
-        language: "json",
+        value: "",
+        language: "yaml",
         readOnly: true,
         automaticLayout: true,
         theme: "vs-dark",
@@ -1548,6 +1580,7 @@
       });
     } else {
       host.textContent = "Monaco Editor nicht verfügbar.";
+      if (CCP.snackbar) CCP.snackbar.error("Monaco Editor nicht verfügbar");
       return false;
     }
     updateDiffEditorModels(ctx, host);
@@ -1560,18 +1593,103 @@
     return true;
   }
 
+  function mergeSnapshotsWithLocalReleases(cognigySnapshots, releasesByName) {
+    const merged = (cognigySnapshots || []).slice();
+    const snapNames = new Set(
+      merged.map(function (s) {
+        return String(s.name || "");
+      })
+    );
+    Object.keys(releasesByName || {}).forEach(function (name) {
+      if (!name || snapNames.has(name)) return;
+      const release = releasesByName[name];
+      const createdAtMs = Number(release && release.created_at) || 0;
+      merged.push({
+        name: name,
+        _id: null,
+        id: null,
+        localOnly: true,
+        createdAt: createdAtMs ? Math.floor(createdAtMs / 1000) : 0,
+        _release: release,
+      });
+    });
+    merged.sort(function (a, b) {
+      return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0);
+    });
+    return merged;
+  }
+
   function snapshotReleaseInfo(snap, releasesByName) {
     const name = String((snap && snap.name) || "");
     const release = releasesByName[name];
-    if (release) return { ok: true, release: release };
-    return { ok: false, reason: "Kein gespeicherter Release in IndexedDB" };
+    if (release) {
+      if (snap && snap.localOnly) {
+        return {
+          ok: true,
+          release: release,
+          localOnly: true,
+          reason: "Nur lokal — Snapshot in Cognigy gelöscht",
+        };
+      }
+      return { ok: true, release: release };
+    }
+    return { ok: false, reason: "Kein gespeicherter Release lokal" };
   }
 
-  function pickDefaultSnapshot(snapshots, releasesByName) {
-    for (let i = 0; i < (snapshots || []).length; i++) {
-      if (snapshotReleaseInfo(snapshots[i], releasesByName).ok) return snapshots[i];
-    }
-    return null;
+  function resolveDiffSideFlows(ctx, sideValue) {
+    if (!sideValue || sideValue === DIFF_CURRENT_VALUE) return ctx.currentFlows || [];
+    const snap = findSnapshotByName(ctx.snapshots, sideValue);
+    const info = snapshotReleaseInfo(snap, ctx.releasesByName);
+    return info.ok ? info.release.flows || [] : [];
+  }
+
+  function getDiffOldFlows(ctx) {
+    return resolveDiffSideFlows(ctx, ctx.selectedOldSide);
+  }
+
+  function getDiffNewFlows(ctx) {
+    return resolveDiffSideFlows(ctx, ctx.selectedNewSide);
+  }
+
+  function applyDiffViewerComparison(ctx) {
+    ctx.diffFlows = buildDiffFlowsList(getDiffOldFlows(ctx), getDiffNewFlows(ctx));
+    ctx.selectedFlowName = pickDefaultFlowName(ctx.diffFlows);
+  }
+
+  function setDiffOldSide(ctx, value) {
+    ctx.selectedOldSide = String(value || DIFF_CURRENT_VALUE);
+    applyDiffViewerComparison(ctx);
+  }
+
+  function setDiffNewSide(ctx, value) {
+    ctx.selectedNewSide = String(value || DIFF_CURRENT_VALUE);
+    applyDiffViewerComparison(ctx);
+  }
+
+  function applyDiffDefaults(ctx) {
+    ctx.selectedOldSide = DIFF_CURRENT_VALUE;
+    ctx.selectedNewSide = DIFF_CURRENT_VALUE;
+    applyDiffViewerComparison(ctx);
+  }
+
+  function isValidDiffSideValue(ctx, value) {
+    if (!value || value === DIFF_CURRENT_VALUE) return true;
+    const snap = findSnapshotByName(ctx.snapshots, value);
+    return !!(snap && snapshotReleaseInfo(snap, ctx.releasesByName).ok);
+  }
+
+  function resolveDiffSideSelection(ctx, currentValue, fallbackValue) {
+    if (isValidDiffSideValue(ctx, currentValue)) return String(currentValue || fallbackValue);
+    return String(fallbackValue);
+  }
+
+  function syncDiffViewerSelections(ctx, data) {
+    if (!ctx || !data) return;
+    ctx.releasesByName = data.releasesByName;
+    ctx.snapshots = data.snapshots;
+    ctx.selectedOldSide = resolveDiffSideSelection(ctx, ctx.selectedOldSide, DIFF_CURRENT_VALUE);
+    ctx.selectedNewSide = resolveDiffSideSelection(ctx, ctx.selectedNewSide, DIFF_CURRENT_VALUE);
+    applyDiffViewerComparison(ctx);
   }
 
   async function loadDiffViewerContext() {
@@ -1589,28 +1707,31 @@
     });
     const payload = await CCP.release.buildCurrentReleasePayload({});
     return {
-      snapshots: snapshots,
+      snapshots: mergeSnapshotsWithLocalReleases(snapshots, releasesByName),
       releasesByName: releasesByName,
       currentFlows: payload.flows || [],
     };
   }
 
-  function applyDiffViewerBaseline(ctx, snap) {
-    const info = snapshotReleaseInfo(snap, ctx.releasesByName);
-    ctx.baselineRelease = info.ok ? info.release : null;
-    ctx.selectedSnapshotName = snap ? String(snap.name || "") : "";
-    const baselineFlows = ctx.baselineRelease ? ctx.baselineRelease.flows || [] : [];
-    ctx.diffFlows = buildDiffFlowsList(baselineFlows, ctx.currentFlows);
-    ctx.selectedFlowName = pickDefaultFlowName(ctx.diffFlows);
+  function createDiffSideToolbar(labelText, selectClass) {
+    const toolbar = el("div", "ccp-rel-diff-side-toolbar");
+    toolbar.appendChild(el("label", "ccp-rel-label", labelText));
+    const row = el("div", "ccp-rel-snap-row");
+    const select = el("select", "ccp-rel-snap-select " + selectClass);
+    const gearBtn = el("button", "ccp-rel-icon-btn ccp-rel-snap-gear", "⚙");
+    gearBtn.type = "button";
+    gearBtn.title = "Releases & Snapshots verwalten";
+    gearBtn.setAttribute("aria-label", "Releases & Snapshots verwalten");
+    row.appendChild(select);
+    row.appendChild(gearBtn);
+    toolbar.appendChild(row);
+    return { toolbar: toolbar, select: select, gearBtn: gearBtn };
   }
 
   function createDiffViewerLayoutDom() {
     const layout = el("div", "ccp-rel-diff-layout");
     const sidebar = el("div", "ccp-rel-diff-sidebar");
     const sidebarHead = el("div", "ccp-rel-diff-sidebar-head");
-    sidebarHead.appendChild(el("label", "ccp-rel-label", "Snapshot"));
-    const snapSelect = el("select", "ccp-rel-snap-select");
-    sidebarHead.appendChild(snapSelect);
 
     const copyRow = el("div", "ccp-rel-annotate-copy-row");
     const copyFlowLabel = "Flow";
@@ -1627,6 +1748,14 @@
     layout.appendChild(sidebar);
 
     const main = el("div", "ccp-rel-diff-main");
+    const editorToolbar = el("div", "ccp-rel-diff-editor-toolbar");
+    const oldSide = createDiffSideToolbar("Alt", "ccp-rel-snap-select-old");
+    const newSide = createDiffSideToolbar("Neu", "ccp-rel-snap-select-new");
+    newSide.toolbar.classList.add("ccp-rel-diff-side-toolbar-new");
+    editorToolbar.appendChild(oldSide.toolbar);
+    editorToolbar.appendChild(newSide.toolbar);
+    main.appendChild(editorToolbar);
+
     const diffHost = el("div", "ccp-rel-diff-main-editor");
     main.appendChild(diffHost);
     layout.appendChild(main);
@@ -1634,7 +1763,10 @@
     return {
       layout: layout,
       refs: {
-        snapSelect: snapSelect,
+        oldSelect: oldSide.select,
+        newSelect: newSide.select,
+        oldGearBtn: oldSide.gearBtn,
+        newGearBtn: newSide.gearBtn,
         flowList: flowList,
         diffHost: diffHost,
         copyFlowBtn: copyFlowBtn,
@@ -1648,28 +1780,46 @@
   }
 
   function wireDiffViewerEvents(ctx, refs) {
-    refs.snapSelect.addEventListener("change", function () {
-      const snap = findSnapshotByName(ctx.snapshots, refs.snapSelect.value);
-      if (!snap) return;
-      const info = snapshotReleaseInfo(snap, ctx.releasesByName);
-      if (!info.ok) return;
-      applyDiffViewerBaseline(ctx, snap);
+    function onSideChange(value, setter) {
+      if (!isValidDiffSideValue(ctx, value)) return;
+      setter(ctx, value);
       refreshDiffViewerUi(ctx, refs);
       void mountMonacoDiffHost(refs.diffHost, ctx);
+    }
+
+    refs.oldSelect.addEventListener("change", function () {
+      onSideChange(refs.oldSelect.value, setDiffOldSide);
+    });
+    refs.newSelect.addEventListener("change", function () {
+      onSideChange(refs.newSelect.value, setDiffNewSide);
     });
 
+    function openManageOverlay() {
+      ui.openReleaseManageOverlay({
+        onDataChange: function () {
+          refreshDiffViewerUi(ctx, refs);
+          void mountMonacoDiffHost(refs.diffHost, ctx);
+        },
+      });
+    }
+
+    refs.oldGearBtn.addEventListener("click", openManageOverlay);
+    refs.newGearBtn.addEventListener("click", openManageOverlay);
+
     refs.copyFlowBtn.addEventListener("click", function () {
-      const baseline = ctx.baselineRelease ? ctx.baselineRelease.flows : [];
-      const text = CCP.release.diffText(baseline, ctx.currentFlows, { flowName: ctx.selectedFlowName });
+      const text = CCP.release.diffText(getDiffOldFlows(ctx), getDiffNewFlows(ctx), {
+        flowName: ctx.selectedFlowName,
+      });
       void copyToClipboard(text).then(function (ok) {
         if (ok) showCopyFeedback(refs.copyFlowBtn, refs.copyFlowLabel, refs.copyFlowDefaultHtml);
+        else if (CCP.snackbar) CCP.snackbar.error("Kopieren fehlgeschlagen");
       });
     });
     refs.copyAllBtn.addEventListener("click", function () {
-      const baseline = ctx.baselineRelease ? ctx.baselineRelease.flows : [];
-      const text = CCP.release.diffText(baseline, ctx.currentFlows);
+      const text = CCP.release.diffText(getDiffOldFlows(ctx), getDiffNewFlows(ctx));
       void copyToClipboard(text).then(function (ok) {
         if (ok) showCopyFeedback(refs.copyAllBtn, refs.copyAllLabel, refs.copyAllDefaultHtml);
+        else if (CCP.snackbar) CCP.snackbar.error("Kopieren fehlgeschlagen");
       });
     });
   }
@@ -1720,6 +1870,7 @@
     } catch (e) {
       container.innerHTML = "";
       container.appendChild(el("div", "ccp-rel-warn", "Fehler beim Laden: " + e.message));
+      if (CCP.snackbar) CCP.pushApiError(CCP.snackbar.error, e);
       return;
     }
     container.innerHTML = "";
@@ -1750,15 +1901,16 @@
       if (!FEATURES.aiGenerate) return;
       await loadSettings();
       if (!state.settings.apiKey) {
-        alert("Bitte zuerst einen Gemini API Key in den Einstellungen hinterlegen.");
+        if (CCP.snackbar) {
+          CCP.snackbar.warning("Gemini API Key fehlt", "Bitte in den Einstellungen hinterlegen.");
+        }
         if (FEATURES.settings) ui.openSettings();
         return;
       }
       target.value = "";
       thoughtsEl.textContent = "";
       thoughtsEl.classList.add("ccp-on");
-      const baseline = state.baselineRelease ? state.baselineRelease.flows : [];
-      const diffText = CCP.release.diffText(baseline, state.currentFlows);
+      const diffText = CCP.release.diffText(getDiffOldFlows(state), getDiffNewFlows(state));
       try {
         await streamGemini(
           {
@@ -1785,7 +1937,7 @@
           }
         );
       } catch (e) {
-        alert("AI-Fehler: " + e.message);
+        if (CCP.snackbar) CCP.snackbar.error("AI-Fehler", e.message);
       }
     }
 
@@ -1881,9 +2033,7 @@
 
     buildBtn.addEventListener("click", function () {
       if (state.commitMessage.length > 500) return;
-      switchTab("build");
-      const buildPanel = state.overlay && state.overlay.querySelector('[data-tab-panel="build"]');
-      if (buildPanel) void runBuild(buildPanel);
+      void startBuildFlow();
     });
     const buildCol = el("div", "ccp-rel-annotate-toolbar-build");
     buildCol.appendChild(el("label", "ccp-rel-label", "\u00a0"));
@@ -1906,10 +2056,29 @@
     });
   }
 
+  async function startBuildFlow() {
+    const projectId = CCP.namingApi.getProjectId();
+    let cognigySnapshots = [];
+    try {
+      cognigySnapshots = await CCP.release.api.listSnapshots(projectId);
+    } catch (e) {
+      console.warn("[CCP release-ui] listSnapshots before build failed", e);
+    }
+    if (cognigySnapshots.length >= 10) {
+      const proceed = await ui.openReleaseManageOverlay({ mode: "build-cleanup" });
+      if (!proceed) return;
+    }
+    switchTab("build");
+    const buildPanel = state.overlay && state.overlay.querySelector('[data-tab-panel="build"]');
+    if (buildPanel) void runBuild(buildPanel);
+  }
+
   async function runBuild(buildPanel) {
     const projectId = CCP.namingApi.getProjectId();
     const buildContainer = buildPanel;
     buildContainer.innerHTML = "";
+    if (!state.tabsRendered) state.tabsRendered = {};
+    state.tabsRendered.build = true;
     state.buildRunning = true;
     state.buildReleaseName = state.releaseName.trim();
 
@@ -1940,6 +2109,7 @@
       } catch (e) {
         els.icon.textContent = statusIcon("failed");
         els.detail.textContent = "Fehler: " + e.message;
+        if (CCP.snackbar) CCP.snackbar.error("Build fehlgeschlagen", id + ": " + e.message);
         throw e;
       }
     }
@@ -2043,10 +2213,32 @@
     });
     const panel = state.overlay.querySelector('[data-tab-panel="' + tabId + '"]');
     if (!panel) return;
-    if (tabId === "check") renderCheckTab(panel);
-    if (tabId === "annotate") void renderAnnotateTab(panel);
-    if (tabId === "build" && !state.buildRunning && !panel.querySelector(".ccp-rel-step")) {
+    if (!state.tabsRendered) state.tabsRendered = {};
+    if (tabId === "check" && !state.tabsRendered.check) {
+      renderCheckTab(panel);
+      state.tabsRendered.check = true;
+    }
+    if (tabId === "annotate" && !state.tabsRendered.annotate) {
+      state.tabsRendered.annotate = true;
+      void renderAnnotateTab(panel);
+    }
+    if (
+      tabId === "build" &&
+      !state.tabsRendered.build &&
+      !state.buildRunning &&
+      !panel.querySelector(".ccp-rel-step")
+    ) {
       panel.innerHTML = el("div", "", 'Wechsle zu Annotate und klicke "Build Release".').outerHTML;
+      state.tabsRendered.build = true;
+    }
+    if (tabId === "annotate" || tabId === "build") {
+      requestAnimationFrame(function () {
+        try {
+          if (state.diffEditor && typeof state.diffEditor.layout === "function") state.diffEditor.layout();
+          if (state.singleEditor && typeof state.singleEditor.layout === "function")
+            state.singleEditor.layout();
+        } catch (_) {}
+      });
     }
   }
 
@@ -2082,12 +2274,14 @@
       });
       header.appendChild(gearBtn);
     }
-    const closeBtn = el("button", "ccp-rel-icon-btn", "✕");
-    closeBtn.type = "button";
-    closeBtn.addEventListener("click", function () {
+    const minimizeBtn = el("button", "ccp-rel-icon-btn", "−");
+    minimizeBtn.type = "button";
+    minimizeBtn.title = "Minimieren";
+    minimizeBtn.setAttribute("aria-label", "Minimieren");
+    minimizeBtn.addEventListener("click", function () {
       ui.closeReleaseOverlay();
     });
-    header.appendChild(closeBtn);
+    header.appendChild(minimizeBtn);
     overlay.appendChild(header);
 
     const body = el("div", "ccp-rel-body");
@@ -2154,8 +2348,13 @@
     saveBtn.addEventListener("click", async function () {
       state.settings.apiKey = keyInput.value.trim();
       state.settings.model = modelSelect.value || DEFAULT_MODEL;
-      await saveSettings();
-      ui.closeSettings();
+      try {
+        await saveSettings();
+        if (CCP.snackbar) CCP.snackbar.success("Einstellungen gespeichert");
+        ui.closeSettings();
+      } catch (e) {
+        if (CCP.snackbar) CCP.pushApiError(CCP.snackbar.error, e);
+      }
     });
     cancelBtn.addEventListener("click", function () {
       ui.closeSettings();
@@ -2172,35 +2371,17 @@
   ui.openReleaseOverlay = async function openReleaseOverlay() {
     if (window !== window.top) return;
     if (FEATURES.settings || FEATURES.aiGenerate) await loadSettings();
-    state.activeTab = "check";
-    state.checkStepIndex = -1;
-    state.checkStepStates = {};
-    state.checkStepExpanded = {};
-    state.checkSkipped = false;
-    state.buildRunning = false;
-    state.buildReleaseName = "";
-    state.snapshotId = null;
-    if (state.overlay) state.overlay.remove();
+    if (state.overlay) {
+      state.overlay.style.display = "";
+      switchTab(state.activeTab);
+      return;
+    }
     buildReleaseOverlay();
   };
 
   ui.closeReleaseOverlay = function closeReleaseOverlay() {
-    if (state.diffEditor) {
-      try {
-        state.diffEditor.dispose();
-      } catch (_) {}
-      state.diffEditor = null;
-    }
-    if (state.singleEditor) {
-      try {
-        state.singleEditor.dispose();
-      } catch (_) {}
-      state.singleEditor = null;
-    }
-    if (state.overlay) {
-      state.overlay.remove();
-      state.overlay = null;
-    }
+    if (!state.overlay) return;
+    state.overlay.style.display = "none";
   };
 
   ui.openSettings = async function openSettings() {
@@ -2216,42 +2397,35 @@
     }
   };
 
-  function populateSnapshotSelect(selectEl, snapshots, releasesByName, selectedName) {
+  function populateDiffSideSelect(selectEl, snapshots, releasesByName, selectedValue) {
     selectEl.innerHTML = "";
-    if (!snapshots.length) {
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = "Keine Snapshots vorhanden";
-      opt.disabled = true;
-      opt.selected = true;
-      selectEl.appendChild(opt);
-      return;
-    }
-    snapshots.forEach(function (snap) {
+    const currentOpt = document.createElement("option");
+    currentOpt.value = DIFF_CURRENT_VALUE;
+    currentOpt.textContent = "Ist-Zustand (aktuell)";
+    if (!selectedValue || selectedValue === DIFF_CURRENT_VALUE) currentOpt.selected = true;
+    selectEl.appendChild(currentOpt);
+
+    (snapshots || []).forEach(function (snap) {
       const info = snapshotReleaseInfo(snap, releasesByName);
       const opt = document.createElement("option");
       opt.value = String(snap.name || "");
       const dt = formatSnapshotDate(snap);
       opt.textContent = (snap.name || "?") + " — " + dt;
-      if (!info.ok) {
-        opt.disabled = true;
+      if (info.localOnly) {
+        opt.textContent += " (nur lokal — Snapshot in Cognigy gelöscht)";
+      } else if (!info.ok) {
         opt.textContent += " (" + info.reason + ")";
+        opt.disabled = true;
       }
-      if (selectedName && opt.value === selectedName && !opt.disabled) opt.selected = true;
+      if (selectedValue && opt.value === selectedValue) opt.selected = true;
       selectEl.appendChild(opt);
     });
-    if (selectedName) {
+
+    if (selectedValue && selectedValue !== DIFF_CURRENT_VALUE) {
       const hasSelected = Array.prototype.some.call(selectEl.options, function (o) {
-        return o.value === selectedName && !o.disabled && o.selected;
+        return o.value === selectedValue && o.selected;
       });
-      if (!hasSelected) {
-        for (let i = 0; i < selectEl.options.length; i++) {
-          if (!selectEl.options[i].disabled) {
-            selectEl.options[i].selected = true;
-            break;
-          }
-        }
-      }
+      if (!hasSelected) currentOpt.selected = true;
     }
   }
 
@@ -2261,8 +2435,415 @@
     });
   }
 
+  function snapshotConfirmPhrase(name) {
+    return "snapshot/" + String(name || "");
+  }
+
+  function releaseConfirmPhrase(name) {
+    return "release/" + String(name || "");
+  }
+
+  function showTypedConfirmDialog(opts) {
+    const o = opts || {};
+    const phrase = String(o.phrase || "");
+    return new Promise(function (resolve) {
+      const overlay = el("div", "ccp-rel-confirm-overlay");
+      overlay.setAttribute("data-ccp-typed-confirm", "1");
+      const card = el("div", "ccp-rel-confirm-card");
+      const title = el("h3", "ccp-rel-confirm-title", o.title || "Bestätigen");
+      const text = el("p", "ccp-rel-confirm-text", o.message || "Gib zur Bestätigung exakt Folgendes ein:");
+      const phraseEl = el("code", "ccp-rel-confirm-phrase", phrase);
+      const input = el("input", "ccp-rel-input");
+      input.type = "text";
+      input.placeholder = phrase;
+      input.autocomplete = "off";
+      input.spellcheck = false;
+      const errEl = el("div", "ccp-rel-confirm-err");
+      const actions = el("div", "ccp-rel-confirm-actions");
+      const cancelBtn = el("button", "ccp-rel-btn", "Abbrechen");
+      const confirmBtn = el("button", "ccp-rel-btn ccp-rel-btn-danger", o.confirmLabel || "Löschen");
+      cancelBtn.type = "button";
+      confirmBtn.type = "button";
+      confirmBtn.disabled = true;
+
+      function close(result) {
+        document.removeEventListener("keydown", onKey);
+        overlay.remove();
+        resolve(!!result);
+      }
+
+      function onKey(ev) {
+        if (ev.key === "Escape") close(false);
+      }
+
+      function syncConfirmBtn() {
+        confirmBtn.disabled = input.value !== phrase;
+        errEl.textContent = "";
+      }
+
+      input.addEventListener("input", syncConfirmBtn);
+      cancelBtn.addEventListener("click", function () {
+        close(false);
+      });
+      confirmBtn.addEventListener("click", function () {
+        if (input.value !== phrase) {
+          errEl.textContent = "Die Eingabe stimmt nicht überein.";
+          return;
+        }
+        close(true);
+      });
+      overlay.addEventListener("click", function (ev) {
+        if (ev.target === overlay) close(false);
+      });
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(confirmBtn);
+      card.appendChild(title);
+      card.appendChild(text);
+      card.appendChild(phraseEl);
+      card.appendChild(input);
+      card.appendChild(errEl);
+      card.appendChild(actions);
+      overlay.appendChild(card);
+      document.documentElement.appendChild(overlay);
+      document.addEventListener("keydown", onKey);
+      input.focus();
+    });
+  }
+
+  async function loadReleaseManageData() {
+    const projectId = CCP.namingApi.getProjectId();
+    let cognigySnapshots = [];
+    try {
+      cognigySnapshots = await CCP.release.api.listSnapshots(projectId);
+    } catch (e) {
+      console.warn("[CCP release-ui] loadReleaseManageData listSnapshots failed", e);
+    }
+    const releases = await CCP.release.loadAllReleases();
+    const releasesByName = {};
+    (releases || []).forEach(function (r) {
+      if (r && r.release_name) releasesByName[String(r.release_name)] = r;
+    });
+    return {
+      projectId: projectId,
+      snapshots: mergeSnapshotsWithLocalReleases(cognigySnapshots, releasesByName),
+      releasesByName: releasesByName,
+      storedReleaseNames: await CCP.release.listReleaseNames(),
+    };
+  }
+
+  function syncReleaseDataToContexts(data) {
+    if (!data) return;
+    if (state.releasesByName) {
+      state.storedReleaseNames = data.storedReleaseNames || state.storedReleaseNames;
+      syncDiffViewerSelections(state, data);
+    }
+    if (diffViewerState.snapshots) {
+      syncDiffViewerSelections(diffViewerState, data);
+    }
+  }
+
+  function releaseManageItemMeta(snap, releasesByName) {
+    const name = String((snap && snap.name) || "");
+    const info = snapshotReleaseInfo(snap, releasesByName);
+    const parts = [];
+    if (snap && snap.localOnly) parts.push(formatSnapshotDate(snap));
+    else parts.push(formatSnapshotDate(snap));
+    if (info.localOnly) parts.push("Nur lokal — Snapshot in Cognigy gelöscht");
+    else if (snap && (snap._id || snap.id)) parts.push("Snapshot in Cognigy");
+    else parts.push("Kein Snapshot in Cognigy");
+    if (info.ok) parts.push("Lokaler Release vorhanden");
+    else parts.push("Kein lokaler Release");
+    return parts.join(" · ");
+  }
+
+  function showDeleteError(row, err) {
+    if (!row) return;
+    const main = row.querySelector(".ccp-rel-cleanup-item-main") || row;
+    let errNote = row.querySelector("[data-ccp-cleanup-err]");
+    if (!errNote) {
+      errNote = el("div", "ccp-rel-cleanup-err");
+      errNote.setAttribute("data-ccp-cleanup-err", "1");
+      main.appendChild(errNote);
+    }
+    const formatted =
+      CCP.formatApiError && typeof CCP.formatApiError === "function"
+        ? CCP.formatApiError(err)
+        : { title: err instanceof Error ? err.message : String(err), body: "" };
+    errNote.textContent = formatted.body || formatted.title;
+  }
+
+  async function confirmAndDeleteSnapshotOnly(snap) {
+    const name = String((snap && snap.name) || "");
+    const snapId = snap && (snap._id || snap.id);
+    if (!snapId) {
+      if (CCP.snackbar) {
+        CCP.snackbar.info("Kein Snapshot", "In Cognigy ist kein Snapshot vorhanden.");
+      }
+      return false;
+    }
+    const confirmed = await showTypedConfirmDialog({
+      title: "Snapshot löschen",
+      message:
+        'Der Snapshot "' + name + '" wird in Cognigy gelöscht. Gib zur Bestätigung exakt Folgendes ein:',
+      phrase: snapshotConfirmPhrase(name),
+      confirmLabel: "Snapshot löschen",
+    });
+    if (!confirmed) return false;
+    await CCP.release.api.waitForDeleteSnapshot(snapId);
+    return true;
+  }
+
+  async function confirmAndDeleteSnapshotAndRelease(snap, releasesByName) {
+    const name = String((snap && snap.name) || "");
+    const snapId = snap && (snap._id || snap.id);
+    const hasLocal = !!(releasesByName && releasesByName[name]);
+    if (!snapId && !hasLocal) {
+      if (CCP.snackbar) CCP.snackbar.info("Nichts zu löschen");
+      return false;
+    }
+    const confirmed = await showTypedConfirmDialog({
+      title: snapId ? "Snapshot und Release löschen" : "Release löschen",
+      message:
+        (snapId
+          ? 'Snapshot "' + name + '" und der lokale Release werden gelöscht.'
+          : 'Der lokale Release "' + name + '" wird gelöscht.') + " Gib zur Bestätigung exakt Folgendes ein:",
+      phrase: releaseConfirmPhrase(name),
+      confirmLabel: snapId ? "Snapshot und Release löschen" : "Release löschen",
+    });
+    if (!confirmed) return false;
+    if (snapId) await CCP.release.api.waitForDeleteSnapshot(snapId);
+    if (hasLocal) await CCP.release.delete(name);
+    return true;
+  }
+
+  function renderReleaseManageList(listEl, snapshots, releasesByName, onMutate, endpointIndex) {
+    listEl.innerHTML = "";
+    if (!snapshots.length) {
+      listEl.appendChild(el("div", "ccp-rel-cleanup-item-meta", "Keine Releases oder Snapshots vorhanden."));
+      return;
+    }
+    const se = CCP.release && CCP.release.snapshotEndpoints;
+    snapshots.forEach(function (snap) {
+      const snapName = String(snap.name || "?");
+      const snapId = snap._id || snap.id;
+      const localRelease = releasesByName[snapName];
+      const row = el("div", "ccp-rel-cleanup-item");
+      const main = el("div", "ccp-rel-cleanup-item-main");
+      const nameRow = el("div", "ccp-rel-cleanup-item-name-row");
+      nameRow.appendChild(el("div", "ccp-rel-cleanup-item-name", snapName));
+      if (se && snapId && endpointIndex) {
+        const chip = se.createEndpointChip(se.getEndpointNamesForSnapshot(endpointIndex, snapId));
+        if (chip) nameRow.appendChild(chip);
+      }
+      main.appendChild(nameRow);
+      main.appendChild(el("div", "ccp-rel-cleanup-item-meta", releaseManageItemMeta(snap, releasesByName)));
+      const actions = el("div", "ccp-rel-cleanup-item-actions");
+      const delSnapBtn = el("button", "ccp-rel-btn", "Delete Only Snapshot");
+      const delBothBtn = el("button", "ccp-rel-btn ccp-rel-btn-danger", "Delete Snapshot and Release");
+      delSnapBtn.type = "button";
+      delBothBtn.type = "button";
+      if (!snapId) delSnapBtn.disabled = true;
+      if (!localRelease) delBothBtn.disabled = true;
+
+      delSnapBtn.addEventListener("click", function () {
+        void (async function () {
+          delSnapBtn.disabled = true;
+          delBothBtn.disabled = true;
+          const prev = delSnapBtn.textContent;
+          delSnapBtn.textContent = "Löschen…";
+          try {
+            const ok = await confirmAndDeleteSnapshotOnly(snap);
+            if (ok && typeof onMutate === "function") await onMutate();
+            else {
+              delSnapBtn.disabled = !snapId;
+              delBothBtn.disabled = !localRelease;
+            }
+          } catch (e) {
+            if (CCP.snackbar) CCP.pushApiError(CCP.snackbar.error, e);
+            showDeleteError(row, e);
+            delSnapBtn.disabled = !snapId;
+            delBothBtn.disabled = !localRelease;
+          } finally {
+            delSnapBtn.textContent = prev;
+          }
+        })();
+      });
+
+      delBothBtn.addEventListener("click", function () {
+        void (async function () {
+          delSnapBtn.disabled = true;
+          delBothBtn.disabled = true;
+          const prev = delBothBtn.textContent;
+          delBothBtn.textContent = "Löschen…";
+          try {
+            const ok = await confirmAndDeleteSnapshotAndRelease(snap, releasesByName);
+            if (ok && typeof onMutate === "function") await onMutate();
+            else {
+              delSnapBtn.disabled = !snapId;
+              delBothBtn.disabled = !localRelease;
+            }
+          } catch (e) {
+            if (CCP.snackbar) CCP.pushApiError(CCP.snackbar.error, e);
+            showDeleteError(row, e);
+            delSnapBtn.disabled = !snapId;
+            delBothBtn.disabled = !localRelease;
+          } finally {
+            delBothBtn.textContent = prev;
+          }
+        })();
+      });
+
+      actions.appendChild(delSnapBtn);
+      actions.appendChild(delBothBtn);
+      row.appendChild(main);
+      row.appendChild(actions);
+      listEl.appendChild(row);
+    });
+  }
+
+  ui.closeReleaseManageOverlay = function closeReleaseManageOverlay(result) {
+    if (state.manageOverlay && state.manageOverlay._escHandler) {
+      document.removeEventListener("keydown", state.manageOverlay._escHandler);
+    }
+    if (state.manageOverlay) {
+      if (typeof state.manageOverlay._resolve === "function") {
+        const resolve = state.manageOverlay._resolve;
+        state.manageOverlay._resolve = null;
+        resolve(result);
+      }
+      state.manageOverlay.remove();
+      state.manageOverlay = null;
+    }
+  };
+
+  ui.openReleaseManageOverlay = async function openReleaseManageOverlay(opts) {
+    const o = opts || {};
+    if (state.manageOverlay) return o.mode === "build-cleanup" ? false : undefined;
+    ensureStyles();
+
+    let data = await loadReleaseManageData();
+    let endpointIndex = { bySnapshotId: {}, bySnapshotName: {} };
+    const projectId = CCP.namingApi && CCP.namingApi.getProjectId ? CCP.namingApi.getProjectId() : "";
+    const se = CCP.release && CCP.release.snapshotEndpoints;
+    if (se && projectId) {
+      try {
+        endpointIndex = await se.fetchSnapshotEndpointIndex(projectId);
+      } catch (e) {
+        console.warn("[CCP release-ui] fetchSnapshotEndpointIndex failed", e);
+      }
+    }
+    const isBuildCleanup = o.mode === "build-cleanup";
+
+    return new Promise(function (resolve) {
+      const overlay = el("div", "ccp-rel-overlay ccp-rel-manage-overlay");
+      overlay.setAttribute("data-ccp-release-manage", "1");
+
+      const header = el("div", "ccp-rel-header");
+      header.appendChild(el("div", "ccp-rel-title", "Releases & Snapshots"));
+      const closeBtn = el("button", "ccp-rel-icon-btn", isBuildCleanup ? "✕" : "−");
+      closeBtn.type = "button";
+      closeBtn.title = isBuildCleanup ? "Abbrechen" : "Schließen";
+      closeBtn.addEventListener("click", function () {
+        ui.closeReleaseManageOverlay(isBuildCleanup ? false : undefined);
+        if (typeof o.onClose === "function") o.onClose();
+      });
+      header.appendChild(closeBtn);
+      overlay.appendChild(header);
+
+      const body = el("div", "ccp-rel-body ccp-rel-manage-body");
+      const inner = el("div", "ccp-rel-manage-list");
+
+      if (isBuildCleanup) {
+        const cognigyCount = data.snapshots.filter(function (s) {
+          return !!(s._id || s.id);
+        }).length;
+        inner.appendChild(
+          el(
+            "div",
+            "ccp-rel-warn ccp-rel-cleanup-info",
+            "In Cognigy sind bereits " +
+              cognigyCount +
+              " Snapshots vorhanden. In manchen Setups gilt ein Limit von 10 Snapshots pro Projekt — dann müsstest du alte Snapshots löschen, bevor ein neuer erstellt werden kann. Je nach Cognigy-Konfiguration sind aber auch mehr als 10 Snapshots möglich. Das Aufräumen ist daher optional: Du kannst beliebig viele Einträge löschen oder direkt mit dem Build fortfahren."
+          )
+        );
+      }
+
+      const listEl = el("div", "ccp-rel-cleanup-list");
+      inner.appendChild(listEl);
+      body.appendChild(inner);
+      overlay.appendChild(body);
+
+      async function mutateList() {
+        data = await loadReleaseManageData();
+        syncReleaseDataToContexts(data);
+        renderReleaseManageList(listEl, data.snapshots, data.releasesByName, mutateList, endpointIndex);
+        if (typeof o.onDataChange === "function") o.onDataChange(data);
+        const annotatePanel = state.overlay && state.overlay.querySelector('[data-tab-panel="annotate"]');
+        if (annotatePanel && state.tabsRendered && state.tabsRendered.annotate) {
+          const refs = collectDiffViewerRefs(annotatePanel);
+          if (refs && refs.oldSelect) refreshDiffViewerUi(state, refs);
+        }
+        if (diffViewerState.overlay) {
+          const refs = collectDiffViewerRefs(diffViewerState.overlay);
+          if (refs && refs.oldSelect) refreshDiffViewerUi(diffViewerState, refs);
+        }
+      }
+
+      renderReleaseManageList(listEl, data.snapshots, data.releasesByName, mutateList, endpointIndex);
+
+      if (isBuildCleanup) {
+        const footer = el("div", "ccp-rel-cleanup-footer");
+        footer.style.padding = "14px 18px";
+        footer.style.borderTop = "1px solid rgba(255,255,255,0.08)";
+        const cancelBtn = el("button", "ccp-rel-btn", "Abbrechen");
+        const buildBtn = el("button", "ccp-rel-btn ccp-rel-btn-primary", "Build Snapshot");
+        cancelBtn.type = "button";
+        buildBtn.type = "button";
+        cancelBtn.addEventListener("click", function () {
+          ui.closeReleaseManageOverlay(false);
+        });
+        buildBtn.addEventListener("click", function () {
+          ui.closeReleaseManageOverlay(true);
+        });
+        footer.appendChild(cancelBtn);
+        footer.appendChild(buildBtn);
+        overlay.appendChild(footer);
+        overlay._resolve = resolve;
+      } else {
+        overlay._resolve = null;
+        resolve(undefined);
+      }
+
+      overlay._escHandler = function (ev) {
+        if (ev.key === "Escape") {
+          ui.closeReleaseManageOverlay(isBuildCleanup ? false : undefined);
+        }
+      };
+      document.addEventListener("keydown", overlay._escHandler);
+
+      state.manageOverlay = overlay;
+      document.documentElement.appendChild(overlay);
+    });
+  };
+
+  function collectDiffViewerRefs(rootEl) {
+    if (!rootEl) return null;
+    return {
+      oldSelect: rootEl.querySelector(".ccp-rel-snap-select-old"),
+      newSelect: rootEl.querySelector(".ccp-rel-snap-select-new"),
+      oldGearBtn: rootEl.querySelector(
+        ".ccp-rel-diff-side-toolbar:not(.ccp-rel-diff-side-toolbar-new) .ccp-rel-snap-gear"
+      ),
+      newGearBtn: rootEl.querySelector(".ccp-rel-diff-side-toolbar-new .ccp-rel-snap-gear"),
+      flowList: rootEl.querySelector(".ccp-rel-flow-list"),
+      diffHost: rootEl.querySelector(".ccp-rel-diff-main-editor"),
+    };
+  }
+
   function refreshDiffViewerUi(ctx, refs) {
-    populateSnapshotSelect(refs.snapSelect, ctx.snapshots, ctx.releasesByName, ctx.selectedSnapshotName);
+    populateDiffSideSelect(refs.oldSelect, ctx.snapshots, ctx.releasesByName, ctx.selectedOldSide);
+    populateDiffSideSelect(refs.newSelect, ctx.snapshots, ctx.releasesByName, ctx.selectedNewSide);
     populateFlowListEl(refs.flowList, ctx.diffFlows, ctx.selectedFlowName, function (flowName) {
       ctx.selectedFlowName = flowName;
       highlightFlowListSelection(refs.flowList, flowName);
@@ -2316,20 +2897,14 @@
     ctx.diffEditor = null;
     ctx.singleEditor = null;
     ctx.selectedFlowName = "";
-    ctx.selectedSnapshotName = "";
-    ctx.baselineRelease = null;
+    applyDiffDefaults(ctx);
 
     try {
       const loaded = await loadDiffViewerContext();
       ctx.snapshots = loaded.snapshots;
       ctx.releasesByName = loaded.releasesByName;
       ctx.currentFlows = loaded.currentFlows;
-      const defaultSnap = pickDefaultSnapshot(ctx.snapshots, ctx.releasesByName);
-      if (defaultSnap) applyDiffViewerBaseline(ctx, defaultSnap);
-      else {
-        ctx.diffFlows = buildDiffFlowsList([], ctx.currentFlows);
-        ctx.selectedFlowName = pickDefaultFlowName(ctx.diffFlows);
-      }
+      applyDiffDefaults(ctx);
     } catch (e) {
       diffLayout.refs.diffHost.innerHTML = "";
       diffLayout.refs.diffHost.appendChild(
@@ -2352,8 +2927,16 @@
     const box = el("div", "ccp-fc-bd-box");
     const head = el("div", "ccp-fc-integrity-head");
     head.appendChild(el("span", "", "Releases"));
+    const tools = el("div", "ccp-fc-integrity-head-tools");
+    const manageGear = el("button", "ccp-rel-fab-gear", "⚙");
+    manageGear.type = "button";
+    manageGear.title = "Releases & Snapshots verwalten";
+    manageGear.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      void ui.openReleaseManageOverlay();
+    });
+    tools.appendChild(manageGear);
     if (FEATURES.settings) {
-      const tools = el("div", "ccp-fc-integrity-head-tools");
       const gear = el("button", "ccp-rel-fab-gear", "⚙");
       gear.type = "button";
       gear.title = "Einstellungen";
@@ -2362,8 +2945,8 @@
         ui.openSettings();
       });
       tools.appendChild(gear);
-      head.appendChild(tools);
     }
+    head.appendChild(tools);
     box.appendChild(head);
     const body = el("div", "ccp-fc-integrity-body");
     body.style.minHeight = "auto";

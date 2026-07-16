@@ -18,8 +18,20 @@
   const PLAYBOOK_BATCH_SIZE = 100;
   const TASK_TIMEOUT_MS = 30 * 60 * 1000;
 
+  function getNamingState() {
+    const local = window.__cognigyCopilotNamingState;
+    if (local && local.bearerToken && local.baseUrl) return local;
+    try {
+      if (window.top && window.top !== window) {
+        const top = window.top.__cognigyCopilotNamingState;
+        if (top && top.bearerToken && top.baseUrl) return top;
+      }
+    } catch (_) {}
+    return local || null;
+  }
+
   function getAuth() {
-    const ns = window.__cognigyCopilotNamingState;
+    const ns = getNamingState();
     if (ns) {
       return {
         baseUrl: String(ns.baseUrl || "").replace(/\/+$/, ""),
@@ -169,6 +181,14 @@
     return items.sort(function (a, b) {
       return (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0);
     });
+  };
+
+  api.listEndpoints = async function listEndpoints(projectId) {
+    return listAll(API_BASE + "/endpoints", { projectId: projectId });
+  };
+
+  api.getEndpoint = async function getEndpoint(endpointId) {
+    return fetchJson("GET", API_BASE + "/endpoints/" + String(endpointId));
   };
 
   api.deleteSnapshot = async function deleteSnapshot(snapshotId) {
@@ -346,6 +366,73 @@
     return fetchJson("POST", API_BASE + "/playbooks/" + String(playbookId) + "/schedule", body || {});
   };
 
+  // A scheduled run's task reaching status "done" only means the run finished
+  // executing — not that its assertions passed. The actual pass/fail verdict
+  // lives on the Playbook run object (status: "successful" | "failed").
+  api.getPlaybookRun = async function getPlaybookRun(playbookId, playbookRunId) {
+    return fetchJson("GET", API_BASE + "/playbooks/" + String(playbookId) + "/runs/" + String(playbookRunId));
+  };
+
+  api.listPlaybookRuns = async function listPlaybookRuns(playbookId, opts) {
+    const o = opts || {};
+    const page = await fetchJson("GET", API_BASE + "/playbooks/" + String(playbookId) + "/runs", null, {
+      projectId: o.projectId,
+      sort: o.sort || "createdAt:desc",
+      limit: o.limit || 25,
+      skip: o.skip,
+    });
+    return parseTaskListPage(page);
+  };
+
+  function playbookRunResultStatus(run) {
+    return String((run && run.status) || "").toLowerCase();
+  }
+
+  function countFailedSteps(run) {
+    const steps = run && Array.isArray(run.stepResults) ? run.stepResults : [];
+    let failed = 0;
+    for (let i = 0; i < steps.length; i++) {
+      if (String(steps[i] && steps[i].status).toLowerCase() === "failed") failed++;
+    }
+    return { failed: failed, total: steps.length };
+  }
+
+  // Resolves the true verdict of a completed playbook run. Prefers a known
+  // playbookRunId; otherwise falls back to the playbook's most recent run.
+  api.resolvePlaybookRunResult = async function resolvePlaybookRunResult(playbookId, opts) {
+    const o = opts || {};
+    let run = null;
+    const runId = o.playbookRunId ? String(o.playbookRunId) : "";
+    if (runId) {
+      try {
+        run = await api.getPlaybookRun(playbookId, runId);
+      } catch (e) {
+        console.warn(LOG_PREFIX, "getPlaybookRun failed", playbookId, runId, e);
+      }
+    }
+    if (!run) {
+      try {
+        const runs = await api.listPlaybookRuns(playbookId, {
+          projectId: o.projectId,
+          limit: 1,
+          sort: "createdAt:desc",
+        });
+        if (runs && runs.length) run = runs[0];
+      } catch (e) {
+        console.warn(LOG_PREFIX, "listPlaybookRuns failed", playbookId, e);
+      }
+    }
+    if (!run) return { status: "unknown", run: null, failedSteps: 0, totalSteps: 0 };
+    const counts = countFailedSteps(run);
+    return {
+      status: playbookRunResultStatus(run) || "unknown",
+      run: run,
+      runId: String(run._id || run.id || runId || ""),
+      failedSteps: counts.failed,
+      totalSteps: counts.total,
+    };
+  };
+
   api.runAllPlaybooks = async function runAllPlaybooks(projectId, opts) {
     const o = opts || {};
     const playbooks = await api.listPlaybooks(projectId);
@@ -389,6 +476,7 @@
           status: "pending",
           error: null,
           task: null,
+          runResult: null,
         };
       });
 
@@ -454,6 +542,39 @@
             }
           }
         }
+
+        // The task finishing ("done") only means the run executed. Fetch the
+        // actual playbook run to learn whether the assertions passed or failed.
+        await Promise.all(
+          batchEntries.map(async function (entry) {
+            if (entry.error) return;
+            const taskDone = String(entry.status || "").toLowerCase() === "done";
+            if (!taskDone) return;
+            try {
+              const result = await api.resolvePlaybookRunResult(entry.playbookId, {
+                projectId: projectId,
+                playbookRunId: entry.playbookRunId,
+              });
+              entry.runResult = result;
+              if (result.runId) entry.playbookRunId = result.runId;
+              if (result.status === "failed") {
+                entry.error =
+                  result.totalSteps > 0
+                    ? "Playbook fehlgeschlagen (" +
+                      result.failedSteps +
+                      "/" +
+                      result.totalSteps +
+                      " Schritte)"
+                    : "Playbook fehlgeschlagen";
+              } else if (result.status === "unknown") {
+                entry.error = "Playbook-Ergebnis konnte nicht ermittelt werden";
+              }
+            } catch (e) {
+              entry.error = "Playbook-Ergebnis konnte nicht ermittelt werden: " + String(e.message || e);
+            }
+            notifyProgress({ phase: "update", index: entry.index, playbook: entry.playbook, run: entry });
+          })
+        );
       }
 
       batchEntries.forEach(function (entry) {
@@ -464,6 +585,7 @@
           status: entry.status,
           error: entry.error,
           task: entry.task,
+          runResult: entry.runResult,
         };
         notifyProgress({
           phase: "done",
