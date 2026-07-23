@@ -97,6 +97,11 @@
     currentFlows: [],
     diffFlows: [],
     selectedFlowName: "",
+    searchQuery: "",
+    searchUseRegex: false,
+    searchError: "",
+    searchHits: null,
+    searchDecoIds: { original: [], modified: [], single: [] },
     releaseName: "",
     releaseMessage: "",
     commitMessage: "",
@@ -121,6 +126,11 @@
     currentFlows: [],
     diffFlows: [],
     selectedFlowName: "",
+    searchQuery: "",
+    searchUseRegex: false,
+    searchError: "",
+    searchHits: null,
+    searchDecoIds: { original: [], modified: [], single: [] },
   };
 
   function el(tag, cls, text) {
@@ -256,6 +266,28 @@
       ".ccp-rel-diff-sidebar-head{flex-shrink:0;padding:12px;border-bottom:1px solid #454545;display:flex;flex-direction:column;gap:10px;background:#252526;}",
       ".ccp-rel-diff-sidebar-head .ccp-rel-label{margin:0;font-size:12px;color:#cccccc;}",
       ".ccp-rel-diff-sidebar-head .ccp-rel-annotate-copy-row{margin:0;}",
+      ".ccp-rel-diff-search{display:flex;flex-direction:column;gap:6px;width:100%;}",
+      ".ccp-rel-diff-search-row{display:flex;align-items:center;gap:6px;width:100%;}",
+      ".ccp-rel-diff-search-input{flex:1;min-width:0;box-sizing:border-box;padding:7px 10px;border-radius:4px;border:1px solid #454545;background:#3c3c3c;color:#cccccc;font-size:12px;font-family:inherit;}",
+      ".ccp-rel-diff-search-input:focus{outline:none;border-color:#007acc;}",
+      ".ccp-rel-diff-search-input.ccp-rel-search-invalid{border-color:#f87171;}",
+      ".ccp-rel-diff-search-regex{flex-shrink:0;width:30px;height:30px;padding:0;border-radius:4px;border:1px solid #454545;background:#3c3c3c;color:#858585;cursor:pointer;font-size:12px;font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace;line-height:1;}",
+      ".ccp-rel-diff-search-regex.ccp-on{background:#094771;border-color:#007acc;color:#ffffff;}",
+      ".ccp-rel-diff-search-regex:hover{background:#505050;color:#ffffff;}",
+      ".ccp-rel-diff-search-regex.ccp-on:hover{background:#0b5a8c;}",
+      ".ccp-rel-diff-search-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:14px;font-size:11px;color:#858585;}",
+      ".ccp-rel-diff-search-counts{font-variant-numeric:tabular-nums;}",
+      ".ccp-rel-diff-search-counts strong{color:#cccccc;font-weight:600;}",
+      ".ccp-rel-diff-search-err{color:#f87171;}",
+      ".ccp-rel-flow-item.ccp-rel-search-ghost{opacity:0.32;}",
+      ".ccp-rel-flow-item.ccp-rel-search-ghost:hover{opacity:0.55;}",
+      ".ccp-rel-flow-hits{display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:auto;}",
+      ".ccp-rel-flow-hit{min-width:16px;height:16px;padding:0 5px;border-radius:8px;font-size:10px;font-weight:700;line-height:16px;text-align:center;font-variant-numeric:tabular-nums;}",
+      ".ccp-rel-flow-hit-old{background:rgba(148,163,184,0.28);color:#cbd5e1;}",
+      ".ccp-rel-flow-hit-new{background:rgba(59,130,246,0.32);color:#93c5fd;}",
+      ".ccp-rel-flow-hit.ccp-rel-hit-zero{opacity:0.4;}",
+      ".ccp-rel-search-ghost-line{opacity:0.28!important;}",
+      ".ccp-rel-search-match{background:rgba(234,179,8,0.42);border-radius:2px;}",
       ".ccp-rel-diff-panel .ccp-rel-snap-select{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:4px;border:1px solid #454545;background:#3c3c3c;color:#cccccc;font-size:12px;font-family:inherit;}",
       ".ccp-rel-diff-panel .ccp-rel-snap-select option:disabled{color:#858585;}",
       ".ccp-rel-diff-panel .ccp-rel-snap-select option{background:#3c3c3c;color:#cccccc;}",
@@ -263,6 +295,7 @@
       ".ccp-rel-snap-label-row{display:flex;align-items:center;width:100%;}",
       ".ccp-rel-snap-label-row .ccp-rel-label{margin:0;}",
       ".ccp-rel-snap-row .ccp-rel-snap-select{flex:1;min-width:0;width:auto;box-sizing:border-box;padding:8px 10px;border-radius:4px;border:1px solid #454545;background:#3c3c3c;color:#cccccc;font-size:12px;font-family:inherit;}",
+      ".ccp-rel-snap-row .ccp-rel-btn-copy-project{flex-shrink:0;padding:6px 8px;font-size:11px;white-space:nowrap;}",
       ".ccp-rel-snap-gear{width:30px;height:30px;padding:0;flex-shrink:0;}",
       ".ccp-rel-diff-sidebar-head .ccp-rel-annotate-copy-row{width:100%;flex-wrap:nowrap;}",
       ".ccp-rel-diff-sidebar-head .ccp-rel-annotate-copy-row .ccp-rel-btn{flex:1;min-width:0;justify-content:center;}",
@@ -1497,13 +1530,41 @@
     return (changed || diffFlows[0]).name;
   }
 
-  function populateFlowListEl(flowListEl, diffFlows, selectedFlowName, onSelect) {
+  function populateFlowListEl(flowListEl, diffFlows, selectedFlowName, onSelect, searchHits) {
     flowListEl.innerHTML = "";
+    const active = !!(searchHits && searchHits.active);
+    const byFlow = (searchHits && searchHits.byFlow) || {};
     (diffFlows || []).forEach(function (d) {
-      const item = el("div", "ccp-rel-flow-item" + (d.name === selectedFlowName ? " ccp-on" : ""));
+      const hits = byFlow[d.name] || { old: 0, new: 0 };
+      const totalHits = (hits.old || 0) + (hits.new || 0);
+      const ghost = active && totalHits === 0;
+      const item = el(
+        "div",
+        "ccp-rel-flow-item" +
+          (d.name === selectedFlowName ? " ccp-on" : "") +
+          (ghost ? " ccp-rel-search-ghost" : "")
+      );
       item.dataset.flowName = d.name;
       item.title = d.status;
       item.appendChild(el("span", "ccp-rel-flow-item-name", d.name));
+      if (active && totalHits > 0) {
+        const hitsEl = el("span", "ccp-rel-flow-hits");
+        const oldHit = el(
+          "span",
+          "ccp-rel-flow-hit ccp-rel-flow-hit-old" + (!(hits.old > 0) ? " ccp-rel-hit-zero" : ""),
+          String(hits.old || 0)
+        );
+        oldHit.title = "Treffer Alt: " + (hits.old || 0);
+        hitsEl.appendChild(oldHit);
+        const newHit = el(
+          "span",
+          "ccp-rel-flow-hit ccp-rel-flow-hit-new" + (!(hits.new > 0) ? " ccp-rel-hit-zero" : ""),
+          String(hits.new || 0)
+        );
+        newHit.title = "Treffer Neu: " + (hits.new || 0);
+        hitsEl.appendChild(newHit);
+        item.appendChild(hitsEl);
+      }
       const dotCls = flowChangeDotClass(d.status);
       if (dotCls) item.appendChild(el("span", "ccp-rel-flow-dot " + dotCls));
       item.addEventListener("click", function () {
@@ -1511,6 +1572,375 @@
       });
       flowListEl.appendChild(item);
     });
+  }
+
+  function lineNumberAtIndex(text, index) {
+    if (index <= 0) return 1;
+    let lines = 1;
+    for (let i = 0; i < index && i < text.length; i++) {
+      if (text.charCodeAt(i) === 10) lines++;
+    }
+    return lines;
+  }
+
+  function countMatchesInText(text, source, isRegex) {
+    const value = String(text || "");
+    const needle = String(source || "");
+    if (!needle || !value) return { count: 0, lines: [], ranges: [] };
+    const lineSet = {};
+    const ranges = [];
+    let count = 0;
+
+    if (isRegex) {
+      let re;
+      try {
+        re = new RegExp(needle, "gm");
+      } catch (_) {
+        return { count: 0, lines: [], ranges: [], error: true };
+      }
+      let match;
+      let guard = 0;
+      const max = Math.max(value.length * 2, 1000);
+      while ((match = re.exec(value)) !== null) {
+        guard++;
+        if (guard > max) break;
+        const start = match.index;
+        const matched = match[0] == null ? "" : String(match[0]);
+        const end = start + matched.length;
+        if (matched.length === 0) {
+          if (re.lastIndex === start) re.lastIndex = start + 1;
+          continue;
+        }
+        count++;
+        const startLine = lineNumberAtIndex(value, start);
+        const endLine = lineNumberAtIndex(value, Math.max(start, end - 1));
+        for (let ln = startLine; ln <= endLine; ln++) lineSet[ln] = true;
+        const startCol = start - (value.lastIndexOf("\n", start - 1) + 1) + 1;
+        const endCol = end - (value.lastIndexOf("\n", end - 1) + 1) + 1;
+        ranges.push({
+          startLineNumber: startLine,
+          startColumn: startCol,
+          endLineNumber: endLine,
+          endColumn: endCol,
+        });
+      }
+    } else {
+      const lower = value.toLowerCase();
+      const find = needle.toLowerCase();
+      let idx = 0;
+      while ((idx = lower.indexOf(find, idx)) !== -1) {
+        count++;
+        const end = idx + find.length;
+        const startLine = lineNumberAtIndex(value, idx);
+        const endLine = lineNumberAtIndex(value, Math.max(idx, end - 1));
+        for (let ln = startLine; ln <= endLine; ln++) lineSet[ln] = true;
+        const startCol = idx - (value.lastIndexOf("\n", idx - 1) + 1) + 1;
+        const endCol = end - (value.lastIndexOf("\n", end - 1) + 1) + 1;
+        ranges.push({
+          startLineNumber: startLine,
+          startColumn: startCol,
+          endLineNumber: endLine,
+          endColumn: endCol,
+        });
+        idx += find.length || 1;
+      }
+    }
+
+    return {
+      count: count,
+      lines: Object.keys(lineSet)
+        .map(Number)
+        .sort(function (a, b) {
+          return a - b;
+        }),
+      ranges: ranges,
+    };
+  }
+
+  function validateDiffSearchRegex(source) {
+    try {
+      void new RegExp(source, "gm");
+      return "";
+    } catch (e) {
+      return e && e.message ? String(e.message) : "Ungültige Regex";
+    }
+  }
+
+  function computeDiffSearchHits(ctx) {
+    const query = String((ctx && ctx.searchQuery) || "");
+    const useRegex = !!(ctx && ctx.searchUseRegex);
+    if (!query) {
+      return {
+        active: false,
+        error: "",
+        sameSide: false,
+        oldTotal: 0,
+        newTotal: 0,
+        byFlow: {},
+      };
+    }
+    if (useRegex) {
+      const err = validateDiffSearchRegex(query);
+      if (err) {
+        return {
+          active: false,
+          error: err,
+          sameSide: false,
+          oldTotal: 0,
+          newTotal: 0,
+          byFlow: {},
+        };
+      }
+    }
+
+    const sameSide = String(ctx.selectedOldSide || "") === String(ctx.selectedNewSide || "");
+    const byFlow = {};
+    let oldTotal = 0;
+    let newTotal = 0;
+
+    (ctx.diffFlows || []).forEach(function (d) {
+      const oldText = d.oldJson || "";
+      const newText = d.newJson || "";
+      if (sameSide) {
+        const once = countMatchesInText(oldText || newText, query, useRegex);
+        byFlow[d.name] = {
+          old: once.count,
+          new: once.count,
+          oldLines: once.lines,
+          newLines: once.lines,
+          oldRanges: once.ranges,
+          newRanges: once.ranges,
+        };
+        oldTotal += once.count;
+        newTotal += once.count;
+        return;
+      }
+      const oldHits = countMatchesInText(oldText, query, useRegex);
+      const newHits = countMatchesInText(newText, query, useRegex);
+      byFlow[d.name] = {
+        old: oldHits.count,
+        new: newHits.count,
+        oldLines: oldHits.lines,
+        newLines: newHits.lines,
+        oldRanges: oldHits.ranges,
+        newRanges: newHits.ranges,
+      };
+      oldTotal += oldHits.count;
+      newTotal += newHits.count;
+    });
+
+    return {
+      active: true,
+      error: "",
+      sameSide: sameSide,
+      oldTotal: oldTotal,
+      newTotal: newTotal,
+      byFlow: byFlow,
+    };
+  }
+
+  function updateDiffSearchMeta(refs, ctx) {
+    if (!refs || !refs.searchCounts) return;
+    const hits = ctx.searchHits;
+    if (ctx.searchError) {
+      refs.searchCounts.className = "ccp-rel-diff-search-counts ccp-rel-diff-search-err";
+      refs.searchCounts.textContent = "Ungültige Regex";
+      refs.searchCounts.title = ctx.searchError;
+      return;
+    }
+    refs.searchCounts.className = "ccp-rel-diff-search-counts";
+    refs.searchCounts.title = "";
+    if (!hits || !hits.active) {
+      refs.searchCounts.textContent = "";
+      return;
+    }
+    refs.searchCounts.innerHTML =
+      "Alt <strong>" +
+      hits.oldTotal +
+      "</strong> · Neu <strong>" +
+      hits.newTotal +
+      "</strong>";
+  }
+
+  function syncDiffSearchInputUi(refs, ctx) {
+    if (!refs) return;
+    if (refs.searchInput) {
+      if (refs.searchInput.value !== ctx.searchQuery) refs.searchInput.value = ctx.searchQuery || "";
+      refs.searchInput.classList.toggle("ccp-rel-search-invalid", !!ctx.searchError);
+    }
+    if (refs.searchRegexBtn) {
+      refs.searchRegexBtn.classList.toggle("ccp-on", !!ctx.searchUseRegex);
+      refs.searchRegexBtn.setAttribute("aria-pressed", ctx.searchUseRegex ? "true" : "false");
+    }
+    updateDiffSearchMeta(refs, ctx);
+  }
+
+  function buildGhostLineRanges(totalLines, matchLines) {
+    const matched = {};
+    (matchLines || []).forEach(function (ln) {
+      matched[ln] = true;
+    });
+    const ranges = [];
+    let start = null;
+    for (let i = 1; i <= totalLines; i++) {
+      if (!matched[i]) {
+        if (start == null) start = i;
+      } else if (start != null) {
+        ranges.push({ start: start, end: i - 1 });
+        start = null;
+      }
+    }
+    if (start != null) ranges.push({ start: start, end: totalLines });
+    return ranges;
+  }
+
+  function clearSearchDecorations(ctx) {
+    if (!ctx) return;
+    if (!ctx.searchDecoIds) ctx.searchDecoIds = { original: [], modified: [], single: [] };
+    function clearOnEditor(editor, key) {
+      if (!editor || typeof editor.deltaDecorations !== "function") return;
+      try {
+        ctx.searchDecoIds[key] = editor.deltaDecorations(ctx.searchDecoIds[key] || [], []);
+      } catch (_) {
+        ctx.searchDecoIds[key] = [];
+      }
+    }
+    if (ctx.diffEditor && typeof ctx.diffEditor.getOriginalEditor === "function") {
+      clearOnEditor(ctx.diffEditor.getOriginalEditor(), "original");
+      clearOnEditor(ctx.diffEditor.getModifiedEditor(), "modified");
+    }
+    clearOnEditor(ctx.singleEditor, "single");
+  }
+
+  function buildSearchDecorations(monaco, matchRanges, matchLines, totalLines) {
+    if (!monaco || !monaco.Range) return [];
+    const decorations = [];
+    const overviewColor = "#d7ba7d";
+    const lane =
+      monaco.editor && monaco.editor.OverviewRulerLane
+        ? monaco.editor.OverviewRulerLane.Center
+        : 2;
+
+    (matchRanges || []).forEach(function (r) {
+      decorations.push({
+        range: new monaco.Range(
+          r.startLineNumber,
+          r.startColumn,
+          r.endLineNumber,
+          r.endColumn
+        ),
+        options: {
+          inlineClassName: "ccp-rel-search-match",
+          overviewRuler: {
+            color: overviewColor,
+            position: lane,
+          },
+        },
+      });
+    });
+
+    if ((matchRanges || []).length || (matchLines || []).length) {
+      buildGhostLineRanges(totalLines, matchLines).forEach(function (block) {
+        decorations.push({
+          range: new monaco.Range(block.start, 1, block.end, 1),
+          options: {
+            isWholeLine: true,
+            className: "ccp-rel-search-ghost-line",
+          },
+        });
+      });
+    }
+    return decorations;
+  }
+
+  function applySearchDecorationsToEditor(monaco, editor, key, ctx, matchRanges, matchLines) {
+    if (!editor || typeof editor.deltaDecorations !== "function") return;
+    if (!ctx.searchDecoIds) ctx.searchDecoIds = { original: [], modified: [], single: [] };
+    const model = typeof editor.getModel === "function" ? editor.getModel() : null;
+    if (!model || (typeof model.isDisposed === "function" && model.isDisposed())) {
+      ctx.searchDecoIds[key] = editor.deltaDecorations(ctx.searchDecoIds[key] || [], []);
+      return;
+    }
+    const totalLines = typeof model.getLineCount === "function" ? model.getLineCount() : 0;
+    const decorations = buildSearchDecorations(monaco, matchRanges, matchLines, totalLines);
+    try {
+      ctx.searchDecoIds[key] = editor.deltaDecorations(ctx.searchDecoIds[key] || [], decorations);
+    } catch (_) {
+      ctx.searchDecoIds[key] = [];
+    }
+  }
+
+  function applyDiffSearchToEditor(ctx) {
+    clearSearchDecorations(ctx);
+    const hits = ctx && ctx.searchHits;
+    if (!hits || !hits.active || ctx.searchError) return;
+    const monaco = state.monaco;
+    if (!monaco) return;
+    const flowHits =
+      (hits.byFlow && ctx.selectedFlowName && hits.byFlow[ctx.selectedFlowName]) || null;
+    if (!flowHits) return;
+
+    if (ctx.singleEditor) {
+      applySearchDecorationsToEditor(
+        monaco,
+        ctx.singleEditor,
+        "single",
+        ctx,
+        flowHits.newRanges || [],
+        flowHits.newLines || []
+      );
+      return;
+    }
+    if (!ctx.diffEditor) return;
+    if (typeof ctx.diffEditor.getOriginalEditor === "function") {
+      applySearchDecorationsToEditor(
+        monaco,
+        ctx.diffEditor.getOriginalEditor(),
+        "original",
+        ctx,
+        flowHits.oldRanges || [],
+        flowHits.oldLines || []
+      );
+    }
+    if (typeof ctx.diffEditor.getModifiedEditor === "function") {
+      applySearchDecorationsToEditor(
+        monaco,
+        ctx.diffEditor.getModifiedEditor(),
+        "modified",
+        ctx,
+        flowHits.newRanges || [],
+        flowHits.newLines || []
+      );
+    }
+  }
+
+  function refreshDiffSearch(ctx, refs) {
+    if (!ctx) return;
+    const hits = computeDiffSearchHits(ctx);
+    ctx.searchHits = hits;
+    ctx.searchError = hits.error || "";
+    if (refs) {
+      syncDiffSearchInputUi(refs, ctx);
+      if (refs.flowList) {
+        populateFlowListEl(refs.flowList, ctx.diffFlows, ctx.selectedFlowName, function (flowName) {
+          ctx.selectedFlowName = flowName;
+          highlightFlowListSelection(refs.flowList, flowName);
+          updateDiffEditorModels(ctx, refs.diffHost);
+          applyDiffSearchToEditor(ctx);
+        }, hits);
+      }
+    }
+    applyDiffSearchToEditor(ctx);
+  }
+
+  function setDiffSearchQuery(ctx, refs, query) {
+    ctx.searchQuery = String(query || "");
+    refreshDiffSearch(ctx, refs);
+  }
+
+  function setDiffSearchRegex(ctx, refs, enabled) {
+    ctx.searchUseRegex = !!enabled;
+    refreshDiffSearch(ctx, refs);
   }
 
   function highlightFlowListSelection(flowListEl, selectedFlowName) {
@@ -1541,12 +1971,14 @@
     if (!sel) return;
     if (ctx.singleEditor) {
       ctx.singleEditor.setValue(sel.newJson || "");
+      applyDiffSearchToEditor(ctx);
       return;
     }
     if (!ctx.diffEditor) return;
     const orig = state.monaco.editor.createModel(sel.oldJson || "", "yaml");
     const mod = state.monaco.editor.createModel(sel.newJson || "", "yaml");
     ctx.diffEditor.setModel({ original: orig, modified: mod });
+    applyDiffSearchToEditor(ctx);
   }
 
   async function mountMonacoDiffHost(host, ctx) {
@@ -1560,6 +1992,7 @@
     disposeMonacoEditors(ctx.diffEditor, ctx.singleEditor);
     ctx.diffEditor = null;
     ctx.singleEditor = null;
+    ctx.searchDecoIds = { original: [], modified: [], single: [] };
     host.innerHTML = "";
     if (typeof monaco.editor.createDiffEditor === "function") {
       ctx.diffEditor = monaco.editor.createDiffEditor(host, {
@@ -1584,6 +2017,7 @@
       return false;
     }
     updateDiffEditorModels(ctx, host);
+    applyDiffSearchToEditor(ctx);
     requestAnimationFrame(function () {
       try {
         if (ctx.diffEditor && typeof ctx.diffEditor.layout === "function") ctx.diffEditor.layout();
@@ -1718,14 +2152,27 @@
     toolbar.appendChild(el("label", "ccp-rel-label", labelText));
     const row = el("div", "ccp-rel-snap-row");
     const select = el("select", "ccp-rel-snap-select " + selectClass);
+    const copyProjectLabel = "Projekt";
+    const copyProjectBtn = createCopyIconButton(copyProjectLabel);
+    copyProjectBtn.classList.add("ccp-rel-btn-copy-project");
+    copyProjectBtn.title = "Gesamtes Projekt dieser Seite kopieren / herunterladen";
+    copyProjectBtn.setAttribute("aria-label", "Gesamtes Projekt kopieren");
     const gearBtn = el("button", "ccp-rel-icon-btn ccp-rel-snap-gear", "⚙");
     gearBtn.type = "button";
     gearBtn.title = "Releases & Snapshots verwalten";
     gearBtn.setAttribute("aria-label", "Releases & Snapshots verwalten");
     row.appendChild(select);
+    row.appendChild(copyProjectBtn);
     row.appendChild(gearBtn);
     toolbar.appendChild(row);
-    return { toolbar: toolbar, select: select, gearBtn: gearBtn };
+    return {
+      toolbar: toolbar,
+      select: select,
+      copyProjectBtn: copyProjectBtn,
+      copyProjectLabel: copyProjectLabel,
+      copyProjectDefaultHtml: copyIconButtonHtml(copyProjectLabel),
+      gearBtn: gearBtn,
+    };
   }
 
   function createDiffViewerLayoutDom() {
@@ -1741,6 +2188,29 @@
     copyRow.appendChild(copyAllBtn);
     copyRow.appendChild(copyFlowBtn);
     sidebarHead.appendChild(copyRow);
+
+    const searchWrap = el("div", "ccp-rel-diff-search");
+    const searchRow = el("div", "ccp-rel-diff-search-row");
+    const searchInput = el("input", "ccp-rel-diff-search-input");
+    searchInput.type = "search";
+    searchInput.placeholder = "Suchen (Text oder Regex)";
+    searchInput.setAttribute("aria-label", "Diff durchsuchen");
+    searchInput.autocomplete = "off";
+    searchInput.spellcheck = false;
+    const searchRegexBtn = el("button", "ccp-rel-diff-search-regex", ".*");
+    searchRegexBtn.type = "button";
+    searchRegexBtn.title = "Regex-Suche";
+    searchRegexBtn.setAttribute("aria-label", "Regex-Suche umschalten");
+    searchRegexBtn.setAttribute("aria-pressed", "false");
+    searchRow.appendChild(searchInput);
+    searchRow.appendChild(searchRegexBtn);
+    searchWrap.appendChild(searchRow);
+    const searchMeta = el("div", "ccp-rel-diff-search-meta");
+    const searchCounts = el("span", "ccp-rel-diff-search-counts");
+    searchMeta.appendChild(searchCounts);
+    searchWrap.appendChild(searchMeta);
+    sidebarHead.appendChild(searchWrap);
+
     sidebar.appendChild(sidebarHead);
 
     const flowList = el("div", "ccp-rel-flow-list");
@@ -1767,6 +2237,12 @@
         newSelect: newSide.select,
         oldGearBtn: oldSide.gearBtn,
         newGearBtn: newSide.gearBtn,
+        oldCopyProjectBtn: oldSide.copyProjectBtn,
+        newCopyProjectBtn: newSide.copyProjectBtn,
+        oldCopyProjectLabel: oldSide.copyProjectLabel,
+        newCopyProjectLabel: newSide.copyProjectLabel,
+        oldCopyProjectDefaultHtml: oldSide.copyProjectDefaultHtml,
+        newCopyProjectDefaultHtml: newSide.copyProjectDefaultHtml,
         flowList: flowList,
         diffHost: diffHost,
         copyFlowBtn: copyFlowBtn,
@@ -1775,6 +2251,9 @@
         copyAllLabel: copyAllLabel,
         copyFlowDefaultHtml: copyIconButtonHtml(copyFlowLabel),
         copyAllDefaultHtml: copyIconButtonHtml(copyAllLabel),
+        searchInput: searchInput,
+        searchRegexBtn: searchRegexBtn,
+        searchCounts: searchCounts,
       },
     };
   }
@@ -1805,6 +2284,62 @@
 
     refs.oldGearBtn.addEventListener("click", openManageOverlay);
     refs.newGearBtn.addEventListener("click", openManageOverlay);
+
+    if (refs.searchInput) {
+      let searchTimer = null;
+      refs.searchInput.addEventListener("input", function () {
+        const value = refs.searchInput.value;
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () {
+          setDiffSearchQuery(ctx, refs, value);
+        }, 120);
+      });
+      refs.searchInput.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape" && refs.searchInput.value) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          refs.searchInput.value = "";
+          setDiffSearchQuery(ctx, refs, "");
+        }
+      });
+    }
+    if (refs.searchRegexBtn) {
+      refs.searchRegexBtn.addEventListener("click", function () {
+        setDiffSearchRegex(ctx, refs, !ctx.searchUseRegex);
+      });
+    }
+
+    function wireCopyFullProject(btn, label, defaultHtml, getFlows, sideKey) {
+      if (!btn) return;
+      btn.addEventListener("click", function () {
+        const flows = getFlows(ctx);
+        const text = CCP.release.flowsText(flows);
+        const sideName = sideKey === "old" ? ctx.selectedOldSide : ctx.selectedNewSide;
+        const filename =
+          "projekt-" + String(sideName || "current").replace(/[^\w.-]+/g, "_") + ".txt";
+        void exportProjectText(text, filename).then(function (result) {
+          if (result.copied) showCopyFeedback(btn, label, defaultHtml);
+          else if (result.downloaded) {
+            if (CCP.snackbar) CCP.snackbar.info("Download", "Projekt als Datei heruntergeladen");
+          } else if (CCP.snackbar) CCP.snackbar.error("Kopieren fehlgeschlagen");
+        });
+      });
+    }
+
+    wireCopyFullProject(
+      refs.oldCopyProjectBtn,
+      refs.oldCopyProjectLabel,
+      refs.oldCopyProjectDefaultHtml,
+      getDiffOldFlows,
+      "old"
+    );
+    wireCopyFullProject(
+      refs.newCopyProjectBtn,
+      refs.newCopyProjectLabel,
+      refs.newCopyProjectDefaultHtml,
+      getDiffNewFlows,
+      "new"
+    );
 
     refs.copyFlowBtn.addEventListener("click", function () {
       const text = CCP.release.diffText(getDiffOldFlows(ctx), getDiffNewFlows(ctx), {
@@ -1861,6 +2396,34 @@
         return false;
       }
     }
+  }
+
+  function downloadTextFile(text, filename) {
+    try {
+      const blob = new Blob([String(text || "")], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "projekt.txt";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () {
+        URL.revokeObjectURL(url);
+      }, 1000);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** Prefer clipboard; fall back to file download if copy fails (e.g. large payloads). */
+  async function exportProjectText(text, filename) {
+    const copied = await copyToClipboard(text);
+    if (copied) return { copied: true, downloaded: false };
+    const downloaded = downloadTextFile(text, filename);
+    return { copied: false, downloaded: downloaded };
   }
 
   async function renderAnnotateTab(container) {
@@ -2838,17 +3401,16 @@
       newGearBtn: rootEl.querySelector(".ccp-rel-diff-side-toolbar-new .ccp-rel-snap-gear"),
       flowList: rootEl.querySelector(".ccp-rel-flow-list"),
       diffHost: rootEl.querySelector(".ccp-rel-diff-main-editor"),
+      searchInput: rootEl.querySelector(".ccp-rel-diff-search-input"),
+      searchRegexBtn: rootEl.querySelector(".ccp-rel-diff-search-regex"),
+      searchCounts: rootEl.querySelector(".ccp-rel-diff-search-counts"),
     };
   }
 
   function refreshDiffViewerUi(ctx, refs) {
     populateDiffSideSelect(refs.oldSelect, ctx.snapshots, ctx.releasesByName, ctx.selectedOldSide);
     populateDiffSideSelect(refs.newSelect, ctx.snapshots, ctx.releasesByName, ctx.selectedNewSide);
-    populateFlowListEl(refs.flowList, ctx.diffFlows, ctx.selectedFlowName, function (flowName) {
-      ctx.selectedFlowName = flowName;
-      highlightFlowListSelection(refs.flowList, flowName);
-      updateDiffEditorModels(ctx, refs.diffHost);
-    });
+    refreshDiffSearch(ctx, refs);
     updateDiffEditorModels(ctx, refs.diffHost);
   }
 
@@ -2857,6 +3419,7 @@
       document.removeEventListener("keydown", diffViewerState.escHandler);
       diffViewerState.escHandler = null;
     }
+    clearSearchDecorations(diffViewerState);
     disposeMonacoEditors(diffViewerState.diffEditor, diffViewerState.singleEditor);
     diffViewerState.diffEditor = null;
     diffViewerState.singleEditor = null;
@@ -2897,6 +3460,11 @@
     ctx.diffEditor = null;
     ctx.singleEditor = null;
     ctx.selectedFlowName = "";
+    ctx.searchQuery = "";
+    ctx.searchUseRegex = false;
+    ctx.searchError = "";
+    ctx.searchHits = null;
+    ctx.searchDecoIds = { original: [], modified: [], single: [] };
     applyDiffDefaults(ctx);
 
     try {

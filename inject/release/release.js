@@ -34,6 +34,19 @@
     return String(flow.name || flow.id || flow._id || "unknown");
   }
 
+  function flowId(flow) {
+    if (!flow) return "";
+    const id = flow.id || flow._id;
+    return id ? String(id) : "";
+  }
+
+  function flowExportHeader(name, id, status) {
+    let line = "=== Flow: " + String(name || "unknown");
+    if (id) line += " [" + String(id) + "]";
+    if (status) line += " (" + String(status) + ")";
+    return line + " ===";
+  }
+
   const DIFF_JSON_KEY_ORDER = ["_id", "id", "type", "label", "preview", "config", "children"];
   const DIFF_JSON_KEY_ORDER_SET = new Set(DIFF_JSON_KEY_ORDER);
 
@@ -142,9 +155,11 @@
       const oldF = oldMap.get(key) || null;
       const newF = newMap.get(key) || null;
       const name = flowName(newF || oldF);
+      const id = flowId(newF || oldF);
       if (oldF && !newF) {
         results.push({
           name: name,
+          id: id,
           status: "removed",
           oldJson: prettyYaml(oldF.nodes != null ? oldF.nodes : oldF),
           newJson: "",
@@ -154,6 +169,7 @@
       if (!oldF && newF) {
         results.push({
           name: name,
+          id: id,
           status: "added",
           oldJson: "",
           newJson: prettyYaml(newF.nodes != null ? newF.nodes : newF),
@@ -164,6 +180,7 @@
       const newJson = prettyYaml(newF.nodes != null ? newF.nodes : newF);
       results.push({
         name: name,
+        id: id,
         status: oldJson === newJson ? "unchanged" : "changed",
         oldJson: oldJson,
         newJson: newJson,
@@ -187,8 +204,26 @@
         });
     const parts = [];
     filtered.forEach(function (d) {
-      parts.push("=== Flow: " + d.name + " (" + d.status + ") ===");
+      parts.push(flowExportHeader(d.name, d.id, d.status));
       parts.push(lcsDiffLines(d.oldJson, d.newJson));
+      parts.push("");
+    });
+    return parts.join("\n").trim();
+  };
+
+  /** Full project text: all flows concatenated (no diffs), same header style as diffText. */
+  rel.flowsText = function flowsText(flows, opts) {
+    const o = opts || {};
+    const list = Array.isArray(flows) ? flows.slice() : [];
+    list.sort(function (a, b) {
+      return flowName(a).localeCompare(flowName(b));
+    });
+    const parts = [];
+    list.forEach(function (f) {
+      if (!f) return;
+      if (o.flowName && flowName(f) !== o.flowName) return;
+      parts.push(flowExportHeader(flowName(f), flowId(f)));
+      parts.push(prettyYaml(f.nodes != null ? f.nodes : f));
       parts.push("");
     });
     return parts.join("\n").trim();

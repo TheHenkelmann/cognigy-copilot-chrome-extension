@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Diff Viewer: per-side „Projekt“ buttons (between snapshot select and settings) to copy/download the full project flows of that side (not only diffs).
+- Diff Viewer search: text/regex filter with ghosted non-matching flows and lines, per-side hit bubbles, scrollbar markers, and version-separated totals (deduped when both sides show the same snapshot).
+
+### Changed
+
+- Diff/project text exports include the flow id in brackets, e.g. `=== Flow: Name [id] (changed) ===`.
+
 ## [0.2.0] - 2026-07-16
 
 ### Added
