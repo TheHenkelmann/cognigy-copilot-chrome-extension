@@ -1755,11 +1755,7 @@
       return;
     }
     refs.searchCounts.innerHTML =
-      "Alt <strong>" +
-      hits.oldTotal +
-      "</strong> · Neu <strong>" +
-      hits.newTotal +
-      "</strong>";
+      "Alt <strong>" + hits.oldTotal + "</strong> · Neu <strong>" + hits.newTotal + "</strong>";
   }
 
   function syncDiffSearchInputUi(refs, ctx) {
@@ -1817,18 +1813,11 @@
     const decorations = [];
     const overviewColor = "#d7ba7d";
     const lane =
-      monaco.editor && monaco.editor.OverviewRulerLane
-        ? monaco.editor.OverviewRulerLane.Center
-        : 2;
+      monaco.editor && monaco.editor.OverviewRulerLane ? monaco.editor.OverviewRulerLane.Center : 2;
 
     (matchRanges || []).forEach(function (r) {
       decorations.push({
-        range: new monaco.Range(
-          r.startLineNumber,
-          r.startColumn,
-          r.endLineNumber,
-          r.endColumn
-        ),
+        range: new monaco.Range(r.startLineNumber, r.startColumn, r.endLineNumber, r.endColumn),
         options: {
           inlineClassName: "ccp-rel-search-match",
           overviewRuler: {
@@ -1876,8 +1865,7 @@
     if (!hits || !hits.active || ctx.searchError) return;
     const monaco = state.monaco;
     if (!monaco) return;
-    const flowHits =
-      (hits.byFlow && ctx.selectedFlowName && hits.byFlow[ctx.selectedFlowName]) || null;
+    const flowHits = (hits.byFlow && ctx.selectedFlowName && hits.byFlow[ctx.selectedFlowName]) || null;
     if (!flowHits) return;
 
     if (ctx.singleEditor) {
@@ -1922,12 +1910,18 @@
     if (refs) {
       syncDiffSearchInputUi(refs, ctx);
       if (refs.flowList) {
-        populateFlowListEl(refs.flowList, ctx.diffFlows, ctx.selectedFlowName, function (flowName) {
-          ctx.selectedFlowName = flowName;
-          highlightFlowListSelection(refs.flowList, flowName);
-          updateDiffEditorModels(ctx, refs.diffHost);
-          applyDiffSearchToEditor(ctx);
-        }, hits);
+        populateFlowListEl(
+          refs.flowList,
+          ctx.diffFlows,
+          ctx.selectedFlowName,
+          function (flowName) {
+            ctx.selectedFlowName = flowName;
+            highlightFlowListSelection(refs.flowList, flowName);
+            updateDiffEditorModels(ctx, refs.diffHost);
+            applyDiffSearchToEditor(ctx);
+          },
+          hits
+        );
       }
     }
     applyDiffSearchToEditor(ctx);
@@ -2315,8 +2309,7 @@
         const flows = getFlows(ctx);
         const text = CCP.release.flowsText(flows);
         const sideName = sideKey === "old" ? ctx.selectedOldSide : ctx.selectedNewSide;
-        const filename =
-          "projekt-" + String(sideName || "current").replace(/[^\w.-]+/g, "_") + ".txt";
+        const filename = "projekt-" + String(sideName || "current").replace(/[^\w.-]+/g, "_") + ".txt";
         void exportProjectText(text, filename).then(function (result) {
           if (result.copied) showCopyFeedback(btn, label, defaultHtml);
           else if (result.downloaded) {
