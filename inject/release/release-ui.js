@@ -1574,55 +1574,66 @@
     });
   }
 
-  function lineNumberAtIndex(text, index) {
-    if (index <= 0) return 1;
-    let lines = 1;
-    for (let i = 0; i < index && i < text.length; i++) {
-      if (text.charCodeAt(i) === 10) lines++;
-    }
-    return lines;
+  const DIFF_SEARCH_MIN_CHARS = 2;
+  const DIFF_SEARCH_MAX_MATCHES = 5000;
+  const DIFF_SEARCH_MAX_INLINE_DECOS = 250;
+  const DIFF_SEARCH_MAX_OVERVIEW = 400;
+  const DIFF_SEARCH_DEBOUNCE_MS = 220;
+
+  function createLineTracker(text) {
+    let line = 1;
+    let lineStart = 0;
+    return {
+      locate: function (index) {
+        if (index < lineStart) {
+          line = 1;
+          lineStart = 0;
+        }
+        while (lineStart < index) {
+          const nl = text.indexOf("\n", lineStart);
+          if (nl === -1 || nl >= index) break;
+          line++;
+          lineStart = nl + 1;
+        }
+        return { line: line, column: index - lineStart + 1 };
+      },
+    };
   }
 
-  function countMatchesInText(text, source, isRegex) {
+  function countMatchesOnly(text, source, isRegex, limit) {
     const value = String(text || "");
     const needle = String(source || "");
-    if (!needle || !value) return { count: 0, lines: [], ranges: [] };
-    const lineSet = {};
-    const ranges = [];
+    const max = limit > 0 ? limit : DIFF_SEARCH_MAX_MATCHES;
+    if (!needle || !value) return { count: 0, truncated: false, error: false };
     let count = 0;
+    let truncated = false;
 
     if (isRegex) {
       let re;
       try {
         re = new RegExp(needle, "gm");
       } catch (_) {
-        return { count: 0, lines: [], ranges: [], error: true };
+        return { count: 0, truncated: false, error: true };
       }
       let match;
       let guard = 0;
-      const max = Math.max(value.length * 2, 1000);
+      const guardMax = Math.max(value.length + 1, max * 2);
       while ((match = re.exec(value)) !== null) {
         guard++;
-        if (guard > max) break;
-        const start = match.index;
+        if (guard > guardMax) {
+          truncated = true;
+          break;
+        }
         const matched = match[0] == null ? "" : String(match[0]);
-        const end = start + matched.length;
         if (matched.length === 0) {
-          if (re.lastIndex === start) re.lastIndex = start + 1;
+          if (re.lastIndex === match.index) re.lastIndex = match.index + 1;
           continue;
         }
         count++;
-        const startLine = lineNumberAtIndex(value, start);
-        const endLine = lineNumberAtIndex(value, Math.max(start, end - 1));
-        for (let ln = startLine; ln <= endLine; ln++) lineSet[ln] = true;
-        const startCol = start - (value.lastIndexOf("\n", start - 1) + 1) + 1;
-        const endCol = end - (value.lastIndexOf("\n", end - 1) + 1) + 1;
-        ranges.push({
-          startLineNumber: startLine,
-          startColumn: startCol,
-          endLineNumber: endLine,
-          endColumn: endCol,
-        });
+        if (count >= max) {
+          truncated = true;
+          break;
+        }
       }
     } else {
       const lower = value.toLowerCase();
@@ -1630,18 +1641,82 @@
       let idx = 0;
       while ((idx = lower.indexOf(find, idx)) !== -1) {
         count++;
-        const end = idx + find.length;
-        const startLine = lineNumberAtIndex(value, idx);
-        const endLine = lineNumberAtIndex(value, Math.max(idx, end - 1));
-        for (let ln = startLine; ln <= endLine; ln++) lineSet[ln] = true;
-        const startCol = idx - (value.lastIndexOf("\n", idx - 1) + 1) + 1;
-        const endCol = end - (value.lastIndexOf("\n", end - 1) + 1) + 1;
+        if (count >= max) {
+          truncated = true;
+          break;
+        }
+        idx += find.length || 1;
+      }
+    }
+    return { count: count, truncated: truncated, error: false };
+  }
+
+  /** Ranges/lines only for the selected flow (decorations). Caps inline + overview markers. */
+  function findMatchRanges(text, source, isRegex) {
+    const value = String(text || "");
+    const needle = String(source || "");
+    if (!needle || !value) {
+      return { count: 0, lines: [], ranges: [], truncated: false, error: false };
+    }
+    const lineSet = {};
+    const ranges = [];
+    let count = 0;
+    let truncated = false;
+    const tracker = createLineTracker(value);
+
+    function onMatch(start, end) {
+      count++;
+      const startPos = tracker.locate(start);
+      const lastPos = tracker.locate(Math.max(start, end - 1));
+      for (let ln = startPos.line; ln <= lastPos.line; ln++) lineSet[ln] = true;
+      if (ranges.length < DIFF_SEARCH_MAX_INLINE_DECOS) {
         ranges.push({
-          startLineNumber: startLine,
-          startColumn: startCol,
-          endLineNumber: endLine,
-          endColumn: endCol,
+          startLineNumber: startPos.line,
+          startColumn: startPos.column,
+          endLineNumber: lastPos.line,
+          endColumn: lastPos.column + 1,
         });
+      }
+    }
+
+    if (isRegex) {
+      let re;
+      try {
+        re = new RegExp(needle, "gm");
+      } catch (_) {
+        return { count: 0, lines: [], ranges: [], truncated: false, error: true };
+      }
+      let match;
+      let guard = 0;
+      const guardMax = Math.max(value.length + 1, DIFF_SEARCH_MAX_MATCHES * 2);
+      while ((match = re.exec(value)) !== null) {
+        guard++;
+        if (guard > guardMax) {
+          truncated = true;
+          break;
+        }
+        const start = match.index;
+        const matched = match[0] == null ? "" : String(match[0]);
+        if (matched.length === 0) {
+          if (re.lastIndex === start) re.lastIndex = start + 1;
+          continue;
+        }
+        onMatch(start, start + matched.length);
+        if (count >= DIFF_SEARCH_MAX_MATCHES) {
+          truncated = true;
+          break;
+        }
+      }
+    } else {
+      const lower = value.toLowerCase();
+      const find = needle.toLowerCase();
+      let idx = 0;
+      while ((idx = lower.indexOf(find, idx)) !== -1) {
+        onMatch(idx, idx + find.length);
+        if (count >= DIFF_SEARCH_MAX_MATCHES) {
+          truncated = true;
+          break;
+        }
         idx += find.length || 1;
       }
     }
@@ -1654,6 +1729,8 @@
           return a - b;
         }),
       ranges: ranges,
+      truncated: truncated,
+      error: false,
     };
   }
 
@@ -1666,76 +1743,177 @@
     }
   }
 
-  function computeDiffSearchHits(ctx) {
-    const query = String((ctx && ctx.searchQuery) || "");
-    const useRegex = !!(ctx && ctx.searchUseRegex);
-    if (!query) {
-      return {
+  function emptyDiffSearchHits(extra) {
+    return Object.assign(
+      {
         active: false,
         error: "",
+        hint: "",
         sameSide: false,
         oldTotal: 0,
         newTotal: 0,
+        truncated: false,
         byFlow: {},
-      };
+      },
+      extra || {}
+    );
+  }
+
+  function computeDiffSearchHitsSync(ctx) {
+    const query = String((ctx && ctx.searchQuery) || "");
+    const useRegex = !!(ctx && ctx.searchUseRegex);
+    if (!query) return emptyDiffSearchHits();
+    if (query.length < DIFF_SEARCH_MIN_CHARS) {
+      return emptyDiffSearchHits({ hint: "Mind. " + DIFF_SEARCH_MIN_CHARS + " Zeichen" });
     }
     if (useRegex) {
       const err = validateDiffSearchRegex(query);
-      if (err) {
-        return {
-          active: false,
-          error: err,
-          sameSide: false,
-          oldTotal: 0,
-          newTotal: 0,
-          byFlow: {},
-        };
-      }
+      if (err) return emptyDiffSearchHits({ error: err });
     }
 
     const sameSide = String(ctx.selectedOldSide || "") === String(ctx.selectedNewSide || "");
     const byFlow = {};
     let oldTotal = 0;
     let newTotal = 0;
+    let truncated = false;
+    const flows = ctx.diffFlows || [];
 
-    (ctx.diffFlows || []).forEach(function (d) {
+    for (let i = 0; i < flows.length; i++) {
+      const d = flows[i];
       const oldText = d.oldJson || "";
       const newText = d.newJson || "";
-      if (sameSide) {
-        const once = countMatchesInText(oldText || newText, query, useRegex);
-        byFlow[d.name] = {
-          old: once.count,
-          new: once.count,
-          oldLines: once.lines,
-          newLines: once.lines,
-          oldRanges: once.ranges,
-          newRanges: once.ranges,
-        };
+      if (sameSide || oldText === newText) {
+        const once = countMatchesOnly(sameSide ? oldText || newText : oldText, query, useRegex);
+        if (once.truncated) truncated = true;
+        byFlow[d.name] = { old: once.count, new: once.count };
         oldTotal += once.count;
         newTotal += once.count;
-        return;
+        continue;
       }
-      const oldHits = countMatchesInText(oldText, query, useRegex);
-      const newHits = countMatchesInText(newText, query, useRegex);
-      byFlow[d.name] = {
-        old: oldHits.count,
-        new: newHits.count,
-        oldLines: oldHits.lines,
-        newLines: newHits.lines,
-        oldRanges: oldHits.ranges,
-        newRanges: newHits.ranges,
-      };
+      const oldHits = countMatchesOnly(oldText, query, useRegex);
+      const newHits = countMatchesOnly(newText, query, useRegex);
+      if (oldHits.truncated || newHits.truncated) truncated = true;
+      byFlow[d.name] = { old: oldHits.count, new: newHits.count };
       oldTotal += oldHits.count;
       newTotal += newHits.count;
-    });
+    }
 
     return {
       active: true,
       error: "",
+      hint: "",
       sameSide: sameSide,
       oldTotal: oldTotal,
       newTotal: newTotal,
+      truncated: truncated,
       byFlow: byFlow,
+    };
+  }
+
+  /** Chunked search so huge projects stay responsive; cancels older runs via ctx._searchGen. */
+  function computeDiffSearchHitsAsync(ctx, onDone) {
+    const query = String((ctx && ctx.searchQuery) || "");
+    const useRegex = !!(ctx && ctx.searchUseRegex);
+    if (!query) {
+      onDone(emptyDiffSearchHits());
+      return;
+    }
+    if (query.length < DIFF_SEARCH_MIN_CHARS) {
+      onDone(emptyDiffSearchHits({ hint: "Mind. " + DIFF_SEARCH_MIN_CHARS + " Zeichen" }));
+      return;
+    }
+    if (useRegex) {
+      const err = validateDiffSearchRegex(query);
+      if (err) {
+        onDone(emptyDiffSearchHits({ error: err }));
+        return;
+      }
+    }
+
+    const gen = (ctx._searchGen = (ctx._searchGen || 0) + 1);
+    const sameSide = String(ctx.selectedOldSide || "") === String(ctx.selectedNewSide || "");
+    const flows = ctx.diffFlows || [];
+    const byFlow = {};
+    let oldTotal = 0;
+    let newTotal = 0;
+    let truncated = false;
+    let index = 0;
+    const CHUNK = 12;
+
+    function finish(hits) {
+      if (ctx._searchGen !== gen) return;
+      onDone(hits);
+    }
+
+    function step() {
+      if (ctx._searchGen !== gen) return;
+      const end = Math.min(index + CHUNK, flows.length);
+      for (; index < end; index++) {
+        const d = flows[index];
+        const oldText = d.oldJson || "";
+        const newText = d.newJson || "";
+        if (sameSide || oldText === newText) {
+          const once = countMatchesOnly(sameSide ? oldText || newText : oldText, query, useRegex);
+          if (once.truncated) truncated = true;
+          byFlow[d.name] = { old: once.count, new: once.count };
+          oldTotal += once.count;
+          newTotal += once.count;
+          continue;
+        }
+        const oldHits = countMatchesOnly(oldText, query, useRegex);
+        const newHits = countMatchesOnly(newText, query, useRegex);
+        if (oldHits.truncated || newHits.truncated) truncated = true;
+        byFlow[d.name] = { old: oldHits.count, new: newHits.count };
+        oldTotal += oldHits.count;
+        newTotal += newHits.count;
+      }
+      if (index < flows.length) {
+        setTimeout(step, 0);
+        return;
+      }
+      finish({
+        active: true,
+        error: "",
+        hint: "",
+        sameSide: sameSide,
+        oldTotal: oldTotal,
+        newTotal: newTotal,
+        truncated: truncated,
+        byFlow: byFlow,
+      });
+    }
+
+    // Tiny lists: stay sync to avoid flicker
+    if (flows.length <= CHUNK) {
+      finish(computeDiffSearchHitsSync(ctx));
+      return;
+    }
+    setTimeout(step, 0);
+  }
+
+  function getSelectedFlowSearchDetails(ctx) {
+    const query = String((ctx && ctx.searchQuery) || "");
+    const useRegex = !!(ctx && ctx.searchUseRegex);
+    if (!query || query.length < DIFF_SEARCH_MIN_CHARS) {
+      return { old: null, new: null };
+    }
+    if (useRegex && validateDiffSearchRegex(query)) {
+      return { old: null, new: null };
+    }
+    const sel = (ctx.diffFlows || []).find(function (d) {
+      return d.name === ctx.selectedFlowName;
+    });
+    if (!sel) return { old: null, new: null };
+    const sameSide = String(ctx.selectedOldSide || "") === String(ctx.selectedNewSide || "");
+    const oldText = sel.oldJson || "";
+    const newText = sel.newJson || "";
+    if (sameSide || oldText === newText) {
+      const once = findMatchRanges(sameSide ? oldText || newText : oldText, query, useRegex);
+      return { old: once, new: once };
+    }
+    return {
+      old: findMatchRanges(oldText, query, useRegex),
+      new: findMatchRanges(newText, query, useRegex),
     };
   }
 
@@ -1748,14 +1926,27 @@
       refs.searchCounts.title = ctx.searchError;
       return;
     }
+    if (hits && hits.hint) {
+      refs.searchCounts.className = "ccp-rel-diff-search-counts";
+      refs.searchCounts.textContent = hits.hint;
+      refs.searchCounts.title = "";
+      return;
+    }
     refs.searchCounts.className = "ccp-rel-diff-search-counts";
     refs.searchCounts.title = "";
     if (!hits || !hits.active) {
       refs.searchCounts.textContent = "";
       return;
     }
+    const suffix = hits.truncated ? "+" : "";
     refs.searchCounts.innerHTML =
-      "Alt <strong>" + hits.oldTotal + "</strong> · Neu <strong>" + hits.newTotal + "</strong>";
+      "Alt <strong>" +
+      hits.oldTotal +
+      suffix +
+      "</strong> · Neu <strong>" +
+      hits.newTotal +
+      suffix +
+      "</strong>";
   }
 
   function syncDiffSearchInputUi(refs, ctx) {
@@ -1808,18 +1999,25 @@
     clearOnEditor(ctx.singleEditor, "single");
   }
 
-  function buildSearchDecorations(monaco, matchRanges, matchLines, totalLines) {
-    if (!monaco || !monaco.Range) return [];
+  function buildSearchDecorations(monaco, detail, totalLines) {
+    if (!monaco || !monaco.Range || !detail) return [];
     const decorations = [];
     const overviewColor = "#d7ba7d";
     const lane =
       monaco.editor && monaco.editor.OverviewRulerLane ? monaco.editor.OverviewRulerLane.Center : 2;
+    const matchRanges = detail.ranges || [];
+    const matchLines = detail.lines || [];
 
-    (matchRanges || []).forEach(function (r) {
+    // Overview markers: one per match line (capped), cheaper than per-occurrence when dense
+    const overviewSeen = {};
+    let overviewCount = 0;
+    matchLines.forEach(function (ln) {
+      if (overviewCount >= DIFF_SEARCH_MAX_OVERVIEW || overviewSeen[ln]) return;
+      overviewSeen[ln] = true;
+      overviewCount++;
       decorations.push({
-        range: new monaco.Range(r.startLineNumber, r.startColumn, r.endLineNumber, r.endColumn),
+        range: new monaco.Range(ln, 1, ln, 1),
         options: {
-          inlineClassName: "ccp-rel-search-match",
           overviewRuler: {
             color: overviewColor,
             position: lane,
@@ -1828,7 +2026,18 @@
       });
     });
 
-    if ((matchRanges || []).length || (matchLines || []).length) {
+    matchRanges.forEach(function (r) {
+      decorations.push({
+        range: new monaco.Range(r.startLineNumber, r.startColumn, r.endLineNumber, r.endColumn),
+        options: {
+          inlineClassName: "ccp-rel-search-match",
+        },
+      });
+    });
+
+    // Skip ghosting when almost everything matches — decorations would dominate and help little
+    const matchLineCount = matchLines.length;
+    if (matchLineCount > 0 && matchLineCount < totalLines && matchLineCount <= Math.max(40, totalLines * 0.45)) {
       buildGhostLineRanges(totalLines, matchLines).forEach(function (block) {
         decorations.push({
           range: new monaco.Range(block.start, 1, block.end, 1),
@@ -1842,7 +2051,7 @@
     return decorations;
   }
 
-  function applySearchDecorationsToEditor(monaco, editor, key, ctx, matchRanges, matchLines) {
+  function applySearchDecorationsToEditor(monaco, editor, key, ctx, detail) {
     if (!editor || typeof editor.deltaDecorations !== "function") return;
     if (!ctx.searchDecoIds) ctx.searchDecoIds = { original: [], modified: [], single: [] };
     const model = typeof editor.getModel === "function" ? editor.getModel() : null;
@@ -1851,7 +2060,7 @@
       return;
     }
     const totalLines = typeof model.getLineCount === "function" ? model.getLineCount() : 0;
-    const decorations = buildSearchDecorations(monaco, matchRanges, matchLines, totalLines);
+    const decorations = buildSearchDecorations(monaco, detail, totalLines);
     try {
       ctx.searchDecoIds[key] = editor.deltaDecorations(ctx.searchDecoIds[key] || [], decorations);
     } catch (_) {
@@ -1865,18 +2074,10 @@
     if (!hits || !hits.active || ctx.searchError) return;
     const monaco = state.monaco;
     if (!monaco) return;
-    const flowHits = (hits.byFlow && ctx.selectedFlowName && hits.byFlow[ctx.selectedFlowName]) || null;
-    if (!flowHits) return;
+    const details = getSelectedFlowSearchDetails(ctx);
 
     if (ctx.singleEditor) {
-      applySearchDecorationsToEditor(
-        monaco,
-        ctx.singleEditor,
-        "single",
-        ctx,
-        flowHits.newRanges || [],
-        flowHits.newLines || []
-      );
+      applySearchDecorationsToEditor(monaco, ctx.singleEditor, "single", ctx, details.new);
       return;
     }
     if (!ctx.diffEditor) return;
@@ -1886,8 +2087,7 @@
         ctx.diffEditor.getOriginalEditor(),
         "original",
         ctx,
-        flowHits.oldRanges || [],
-        flowHits.oldLines || []
+        details.old
       );
     }
     if (typeof ctx.diffEditor.getModifiedEditor === "function") {
@@ -1896,17 +2096,36 @@
         ctx.diffEditor.getModifiedEditor(),
         "modified",
         ctx,
-        flowHits.newRanges || [],
-        flowHits.newLines || []
+        details.new
       );
     }
   }
 
   function refreshDiffSearch(ctx, refs) {
     if (!ctx) return;
-    const hits = computeDiffSearchHits(ctx);
-    ctx.searchHits = hits;
-    ctx.searchError = hits.error || "";
+    const query = String(ctx.searchQuery || "");
+    // Fast path: clear / too short / invalid — sync, no chunking flicker
+    if (!query || query.length < DIFF_SEARCH_MIN_CHARS || (ctx.searchUseRegex && validateDiffSearchRegex(query))) {
+      const hits = computeDiffSearchHitsSync(ctx);
+      ctx.searchHits = hits;
+      ctx.searchError = hits.error || "";
+      ctx._searchGen = (ctx._searchGen || 0) + 1;
+      applyDiffSearchResults(ctx, refs, hits);
+      return;
+    }
+    if (refs && refs.searchCounts) {
+      refs.searchCounts.className = "ccp-rel-diff-search-counts";
+      refs.searchCounts.textContent = "Suche…";
+      refs.searchCounts.title = "";
+    }
+    computeDiffSearchHitsAsync(ctx, function (hits) {
+      ctx.searchHits = hits;
+      ctx.searchError = hits.error || "";
+      applyDiffSearchResults(ctx, refs, hits);
+    });
+  }
+
+  function applyDiffSearchResults(ctx, refs, hits) {
     if (refs) {
       syncDiffSearchInputUi(refs, ctx);
       if (refs.flowList) {
@@ -1918,13 +2137,15 @@
             ctx.selectedFlowName = flowName;
             highlightFlowListSelection(refs.flowList, flowName);
             updateDiffEditorModels(ctx, refs.diffHost);
-            applyDiffSearchToEditor(ctx);
           },
           hits
         );
       }
     }
-    applyDiffSearchToEditor(ctx);
+    // Decorations after paint so sidebar counts/ghosts appear first
+    requestAnimationFrame(function () {
+      applyDiffSearchToEditor(ctx);
+    });
   }
 
   function setDiffSearchQuery(ctx, refs, query) {
@@ -2187,10 +2408,11 @@
     const searchRow = el("div", "ccp-rel-diff-search-row");
     const searchInput = el("input", "ccp-rel-diff-search-input");
     searchInput.type = "search";
-    searchInput.placeholder = "Suchen (Text oder Regex)";
+    searchInput.placeholder = "Suchen (min. 2 Zeichen)";
     searchInput.setAttribute("aria-label", "Diff durchsuchen");
     searchInput.autocomplete = "off";
     searchInput.spellcheck = false;
+    searchInput.minLength = DIFF_SEARCH_MIN_CHARS;
     const searchRegexBtn = el("button", "ccp-rel-diff-search-regex", ".*");
     searchRegexBtn.type = "button";
     searchRegexBtn.title = "Regex-Suche";
@@ -2286,7 +2508,7 @@
         if (searchTimer) clearTimeout(searchTimer);
         searchTimer = setTimeout(function () {
           setDiffSearchQuery(ctx, refs, value);
-        }, 120);
+        }, DIFF_SEARCH_DEBOUNCE_MS);
       });
       refs.searchInput.addEventListener("keydown", function (ev) {
         if (ev.key === "Escape" && refs.searchInput.value) {

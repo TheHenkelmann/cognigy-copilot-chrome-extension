@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Diff/project text exports include the flow id in brackets, e.g. `=== Flow: Name [id] (changed) ===`.
+- Diff Viewer search: min. 2 characters, count-only scan for the flow list, decorations only for the selected flow, match/decoration caps, and chunked scanning so large projects stay responsive.
 
 ## [0.2.0] - 2026-07-16
 
